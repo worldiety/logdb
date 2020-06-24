@@ -1,0 +1,9 @@
+github.com/golangee/log v0.0.0-20200527135508-039216fb6009 h1:Oq7S5qEtW2onDpKpYOcn4l/6pwKgg+GlpLSqfM79RxQ=
+github.com/golangee/log v0.0.0-20200527135508-039216fb6009/go.mod h1:3bn9K3Qv+nn37RGViudYamNme1p/xf5olDp5Qehf6w8=
+github.com/pierrec/lz4 v1.0.1 h1:w6GMGWSsCI04fTM8wQRdnW74MuJISakuUU0onU0TYB4=
+github.com/pierrec/lz4 v2.5.2+incompatible h1:WCjObylUIOlKy/+7Abdn34TLIkXiA4UWUMhxq9m9ZXI=
+github.com/pierrec/lz4 v2.5.2+incompatible/go.mod h1:pdkljMzZIN41W+lC3N2tnIh5sFi+IEE17M5jbnwPHcY=
+github.com/worldiety/ioutil v0.0.0-20200218105628-f01bd4ba8dd8 h1:1MzLj3FBzoEsD0T8nc94YQmJEPyqujFLGFCelPEy25w=
+github.com/worldiety/ioutil v0.0.0-20200218105628-f01bd4ba8dd8/go.mod h1:BdaPI7SxP9HTK7ixxvzsefmPKzrkRowbpT+1x3iPmmY=
+github.com/worldiety/ioutil v0.0.0-20200623122521-9528601101ef h1:D4YHXMVe4YGnXYRhZkuDpjUbegt4Qg0zYnpIqhySKFg=
+github.com/worldiety/ioutil v0.0.0-20200623122521-9528601101ef/go.mod h1:BdaPI7SxP9HTK7ixxvzsefmPKzrkRowbpT+1x3iPmmY=
