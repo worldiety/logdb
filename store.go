@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 )
 
 type DB struct {
@@ -12,6 +13,9 @@ type DB struct {
 	tmpWriteObj        *Object
 	maxObjSize         int
 	pendingWriteRecord *Record
+	maxRecSize         int
+	reader             *concurrentCachedReader
+	objPool            sync.Pool
 }
 
 func Open(fname string) (*DB, error) {
@@ -25,10 +29,20 @@ func Open(fname string) (*DB, error) {
 		return nil, err
 	}
 
+	fmt.Printf("db size is %d (%d MiB)\n", stat.Size(), stat.Size()/1024/1024)
+
 	db := &DB{file: file, eof: stat.Size()}
-	db.maxObjSize = 1024 * 64                               // 64k max object size
-	db.pendingWriteRecord = newRecord(db.maxObjSize * 1000) // 64MB max batch size
+	db.maxObjSize = 1024 * 64            // 64k max object size
+	db.maxRecSize = db.maxObjSize * 1000 // 64MB max batch size
+	db.pendingWriteRecord = newRecord(db.maxRecSize)
 	db.tmpWriteObj = newObject(db.maxObjSize)
+	db.reader, err = newConcurrentCachedReader(db.file, db.maxRecSize)
+	if err != nil {
+		return nil, err
+	}
+	db.objPool = sync.Pool{
+		New: func() interface{} { return newObject(db.maxObjSize) },
+	}
 	return db, nil
 }
 
@@ -54,7 +68,7 @@ func (db *DB) Flush() error {
 	record := db.pendingWriteRecord
 
 	tmp := record.Bytes()
-	if len(tmp) == offsetRecObjList{
+	if len(tmp) == offsetRecObjList {
 		return nil
 	}
 
@@ -81,7 +95,26 @@ func (db *DB) Close() error {
 	return db.file.Close()
 }
 
-func (db *DB) ForEach(f func(obj *Object) error) error {
+// Read seeks to the id (currently just the offset) and reads the object. It is safe to be used
+// concurrently.
+func (db *DB) Read(id uint64, f func(obj *Object) error) error {
+	obj := db.objPool.Get().(*Object)
+	defer db.objPool.Put(obj)
+
+	_, err := db.reader.ReadAt(int64(id), obj.buf.Buf)
+	if err != nil {
+		return err
+	}
+	if err := f(obj); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// ForEach is safe to be used concurrently. It allocates its own buffer
+// on each call, which is an easy design and is negligible for large datasets.
+func (db *DB) ForEach(f func(id uint64, obj *Object) error) error {
 	record := newRecord(db.pendingWriteRecord.MaxSize())
 	obj := newObject(db.maxObjSize)
 
@@ -98,11 +131,11 @@ func (db *DB) ForEach(f func(obj *Object) error) error {
 			return fmt.Errorf("unable to read a record at offset %d", offset)
 		}
 
-		offset += int64(record.Size())
-
-		err = record.ForEach(obj, func(object *Object) error {
-			return f(object)
+		err = record.ForEach(obj, func(recOffset int, object *Object) error {
+			return f(uint64(offset)+uint64(recOffset), object)
 		})
+
+		offset += int64(record.Size())
 
 		if err != nil {
 			return err

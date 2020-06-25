@@ -61,7 +61,7 @@ func (d *Record) Add(obj *Object) {
 	d.setObjectCount(count + 1)
 }
 
-func (d *Record) ForEach(tmp *Object, f func(object *Object) error) error {
+func (d *Record) ForEach(tmp *Object, f func(offset int, object *Object) error) error {
 	count := int(d.ObjectCount())
 	d.buf.Pos = offsetRecObjList
 	for i := 0; i < count; i++ {
@@ -69,7 +69,7 @@ func (d *Record) ForEach(tmp *Object, f func(object *Object) error) error {
 		d.buf.Pos -= 4
 		objBuf := d.buf.Buf[d.buf.Pos : d.buf.Pos+int(size)]
 		copy(tmp.buf.Buf, objBuf)
-		if err := f(tmp); err != nil {
+		if err := f(d.buf.Pos, tmp); err != nil {
 			return err
 		}
 		d.buf.Pos += int(size)

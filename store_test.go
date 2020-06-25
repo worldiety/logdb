@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"testing"
+	"time"
 )
 
 func TestObj(t *testing.T) {
@@ -45,7 +46,7 @@ func TestOpen(t *testing.T) {
 	assertNil(t, err)
 
 	is3 := false
-	err = db.ForEach(func(obj *Object) error {
+	err = db.ForEach(func(id uint64, obj *Object) error {
 		obj.WithFields(func(name uint32, kind DataType, f *LEBuffer) {
 			v := f.ReadFloat32()
 			if name == 1 && kind == TFloat32 && v == 3 {
@@ -81,6 +82,7 @@ func TestTable(t *testing.T) {
 	db, err := Open(fname)
 	assertNil(t, err)
 
+	start := time.Now()
 	for _, testObj := range testSet {
 		err = db.Add(func(obj *Object) error {
 			for _, field := range testObj.Fields {
@@ -93,14 +95,18 @@ func TestTable(t *testing.T) {
 
 	err = db.Close()
 	assertNil(t, err)
+	eps := float64(len(testSet)) / float64(time.Now().Sub(start)) * float64(time.Second)
+	fmt.Printf("needed %v to insert %d entries (%2.f entries/second)\n", time.Now().Sub(start), len(testSet), eps)
 
+	start = time.Now()
 	db, err = Open(fname)
 	assertNil(t, err)
 	defer db.Close()
 
+	tableOffsets := make([]uint64, len(testSet))
 	tableCheck := make([]bool, len(testSet))
 	objIdx := 0
-	err = db.ForEach(func(obj *Object) error {
+	err = db.ForEach(func(id uint64, obj *Object) error {
 		testObj := testSet[objIdx]
 
 		fieldIdx := 0
@@ -116,6 +122,7 @@ func TestTable(t *testing.T) {
 			t.Fatalf("lost fields for object %d, expected %d but got %d", objIdx, len(testObj.Fields), fieldIdx)
 		}
 		tableCheck[objIdx] = true
+		tableOffsets[objIdx] = id
 
 		objIdx++
 		return nil
@@ -128,6 +135,34 @@ func TestTable(t *testing.T) {
 		}
 	}
 
+	eps = float64(len(testSet)) / float64(time.Now().Sub(start)) * float64(time.Second)
+	fmt.Printf("needed %v to read %d entries (%2.f entries/second)\n", time.Now().Sub(start), len(testSet), eps)
+
+	// now, check single read commands
+	start = time.Now()
+	for objIdx, id := range tableOffsets {
+		err := db.Read(id, func(obj *Object) error {
+			testObj := testSet[objIdx]
+
+			fieldIdx := 0
+			obj.WithFields(func(name uint32, kind DataType, f *LEBuffer) {
+				err = testObj.Fields[fieldIdx].Read(name, kind, f)
+				if err != nil {
+					t.Fatalf("failed at object %d at field %d: %v", objIdx, fieldIdx, err)
+				}
+				fieldIdx++
+			})
+
+			if fieldIdx != len(testObj.Fields) {
+				t.Fatalf("lost fields for object %d, expected %d but got %d", objIdx, len(testObj.Fields), fieldIdx)
+			}
+			return nil
+		})
+		assertNil(t, err)
+	}
+	eps = float64(len(testSet)) / float64(time.Now().Sub(start)) * float64(time.Second)
+	fmt.Printf("needed %v to read single %d entries (%2.f entries/second)\n", time.Now().Sub(start), len(testSet), eps)
+
 }
 
 type TestObject struct {
@@ -139,6 +174,8 @@ type TestField struct {
 	Kind  DataType
 	Value interface{}
 }
+
+var tmp64k = make([]byte, 1024*64)
 
 func (t TestField) Read(name uint32, kind DataType, f *LEBuffer) error {
 	if t.Name != name {
@@ -182,47 +219,44 @@ func (t TestField) Read(name uint32, kind DataType, f *LEBuffer) error {
 		}
 	case TTinyBlob:
 		v := t.Value.([]byte)
-		tmp := make([]byte, 1024*64)
-		lTmp := f.ReadTinyBlob(tmp)
+
+		lTmp := f.ReadTinyBlob(tmp64k)
 		if len(v) != lTmp {
 			return fmt.Errorf("expected tinyBlob length %d but got %d", len(v), lTmp)
 		}
 
-		if !bytes.Equal(v, tmp[:len(v)]) {
-			return fmt.Errorf("expected tinyBlob equal \n%v but got \n%v", v, tmp[:len(v)])
+		if !bytes.Equal(v, tmp64k[:len(v)]) {
+			return fmt.Errorf("expected tinyBlob equal \n%v but got \n%v", v, tmp64k[:len(v)])
 		}
 	case TBlob:
 		v := t.Value.([]byte)
-		tmp := make([]byte, 1024*64)
-		lTmp := f.ReadBlob(tmp)
+		lTmp := f.ReadBlob(tmp64k)
 		if len(v) != lTmp {
 			return fmt.Errorf("expected Blob length %d but got %d", len(v), lTmp)
 		}
 
-		if !bytes.Equal(v, tmp[:len(v)]) {
-			return fmt.Errorf("expected Blob equal %v but got %v", v, tmp[:len(v)])
+		if !bytes.Equal(v, tmp64k[:len(v)]) {
+			return fmt.Errorf("expected Blob equal %v but got %v", v, tmp64k[:len(v)])
 		}
 	case TMediumBlob:
 		v := t.Value.([]byte)
-		tmp := make([]byte, 1024*64)
-		lTmp := f.ReadMediumBlob(tmp)
+		lTmp := f.ReadMediumBlob(tmp64k)
 		if len(v) != lTmp {
 			return fmt.Errorf("expected mediumBlob length %d but got %d", len(v), lTmp)
 		}
 
-		if !bytes.Equal(v, tmp[:len(v)]) {
-			return fmt.Errorf("expected mediumBlob equal %v but got %v", v, tmp[:len(v)])
+		if !bytes.Equal(v, tmp64k[:len(v)]) {
+			return fmt.Errorf("expected mediumBlob equal %v but got %v", v, tmp64k[:len(v)])
 		}
 	case TLongBlob:
 		v := t.Value.([]byte)
-		tmp := make([]byte, 1024*64)
-		lTmp := f.ReadLongBlob(tmp)
+		lTmp := f.ReadLongBlob(tmp64k)
 		if len(v) != lTmp {
 			return fmt.Errorf("expected longBlob length %d but got %d", len(v), lTmp)
 		}
 
-		if !bytes.Equal(v, tmp[:len(v)]) {
-			return fmt.Errorf("expected longBlob equal \n%v but got \n%v", v, tmp[:len(v)])
+		if !bytes.Equal(v, tmp64k[:len(v)]) {
+			return fmt.Errorf("expected longBlob equal \n%v but got \n%v", v, tmp64k[:len(v)])
 		}
 	case TFloat32:
 		v := t.Value.(float32)
@@ -275,7 +309,7 @@ func (t TestField) Write(f *LEBuffer) {
 func createTestTable() []TestObject {
 	fmt.Println("creating table...")
 	var r []TestObject
-	for i := 0; i < 1000; i++ {
+	for i := 0; i < 10_000; i++ {
 		myObj := TestObject{}
 		fields := generateFields()
 		for _, f := range fields {
@@ -309,7 +343,7 @@ func randomKind() DataType {
 	return kind
 }
 
-var random = rand.New(rand.NewSource(0))
+var random = rand.New(rand.NewSource(1234))
 
 func generateValue(kind DataType) interface{} {
 	switch kind {
