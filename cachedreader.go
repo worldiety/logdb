@@ -30,7 +30,7 @@ func (r *concurrentCachedReader) inPage(from, to int64) bool {
 
 func (r *concurrentCachedReader) pageIn(offset int64) error {
 	r.recordOffset = offset
-	n, err := r.file.ReadAt(r.record.buf.Buf, offset)
+	n, err := r.file.ReadAt(r.record.buf.Bytes, offset)
 	r.actualRecordSize = int64(n)
 	if err != nil {
 		if err == io.EOF {
@@ -55,8 +55,8 @@ func (r *concurrentCachedReader) ReadAt(offset int64, dst []byte) (int, error) {
 		if err != nil {
 			return 0, err
 		}
-		return copy(dst, r.record.buf.Buf[offset-r.recordOffset:r.actualRecordSize]), nil
+		return copy(dst, r.record.buf.Bytes[offset-r.recordOffset:r.actualRecordSize]), nil
 	}
 	defer r.mutex.RUnlock()
-	return copy(dst, r.record.buf.Buf[offset-r.recordOffset:r.actualRecordSize]), nil
+	return copy(dst, r.record.buf.Bytes[offset-r.recordOffset:r.actualRecordSize]), nil
 }

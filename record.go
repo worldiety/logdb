@@ -1,5 +1,7 @@
 package logdb
 
+import "github.com/worldiety/ioutil"
+
 const (
 	offsetRecSize     = 0
 	offsetRecObjCount = 4
@@ -7,19 +9,19 @@ const (
 )
 
 type Record struct {
-	buf *LEBuffer
+	buf *ioutil.LittleEndianBuffer
 }
 
 func newRecord(maxSize int) *Record {
-	r := &Record{buf: &LEBuffer{
-		Buf: make([]byte, maxSize),
+	r := &Record{buf: &ioutil.LittleEndianBuffer{
+		Bytes: make([]byte, maxSize),
 	}}
 	r.Reset()
 	return r
 }
 
 func (d *Record) MaxSize() int {
-	return len(d.buf.Buf)
+	return len(d.buf.Bytes)
 }
 
 func (d *Record) Size() uint32 {
@@ -43,7 +45,7 @@ func (d *Record) setObjectCount(v uint32) {
 }
 
 func (d *Record) Bytes() []byte {
-	return d.buf.Buf[:d.Size()]
+	return d.buf.Bytes[:d.Size()]
 }
 
 func (d *Record) Reset() {
@@ -67,8 +69,9 @@ func (d *Record) ForEach(tmp *Object, f func(offset int, object *Object) error) 
 	for i := 0; i < count; i++ {
 		size := d.buf.ReadUint32()
 		d.buf.Pos -= 4
-		objBuf := d.buf.Buf[d.buf.Pos : d.buf.Pos+int(size)]
-		copy(tmp.buf.Buf, objBuf)
+		objBuf := d.buf.Bytes[d.buf.Pos : d.buf.Pos+int(size)]
+		copy(tmp.buf.Bytes, objBuf)
+		tmp.reverseFlush()
 		if err := f(d.buf.Pos, tmp); err != nil {
 			return err
 		}

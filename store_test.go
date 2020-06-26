@@ -3,6 +3,7 @@ package logdb
 import (
 	"bytes"
 	"fmt"
+	"github.com/worldiety/ioutil"
 	ioutil2 "io/ioutil"
 	"math/rand"
 	"os"
@@ -14,8 +15,8 @@ import (
 
 func TestObj(t *testing.T) {
 	obj := newObject(1024 * 64)
-	obj.AddField(1, TFloat32, func(f *LEBuffer) {
-		f.WriteFloat32(3)
+	obj.AddField(1, func(f *FieldWriter) {
+		f.WriteFloat(3)
 	})
 
 	if obj.FieldCount() != 1 {
@@ -32,8 +33,8 @@ func TestOpen(t *testing.T) {
 	db, err := Open(fname)
 	assertNil(t, err)
 	err = db.Add(func(obj *Object) error {
-		obj.AddField(1, TFloat32, func(f *LEBuffer) {
-			f.WriteFloat32(3)
+		obj.AddField(1, func(f *FieldWriter) {
+			f.WriteFloat(3)
 		})
 		return nil
 	})
@@ -47,9 +48,9 @@ func TestOpen(t *testing.T) {
 
 	is3 := false
 	err = db.ForEach(func(id uint64, obj *Object) error {
-		obj.WithFields(func(name uint32, kind DataType, f *LEBuffer) {
-			v := f.ReadFloat32()
-			if name == 1 && kind == TFloat32 && v == 3 {
+		obj.WithFields(func(name uint32, kind ioutil.Type, f *FieldReader) {
+			v := f.ReadFloat()
+			if name == 1 && kind.IsNumber() && v == 3 {
 				is3 = true
 			}
 		})
@@ -86,7 +87,7 @@ func TestTable(t *testing.T) {
 	for _, testObj := range testSet {
 		err = db.Add(func(obj *Object) error {
 			for _, field := range testObj.Fields {
-				obj.AddField(field.Name, field.Kind, field.Write)
+				obj.AddField(field.Name, field.Write)
 			}
 			return nil
 		})
@@ -110,7 +111,7 @@ func TestTable(t *testing.T) {
 		testObj := testSet[objIdx]
 
 		fieldIdx := 0
-		obj.WithFields(func(name uint32, kind DataType, f *LEBuffer) {
+		obj.WithFields(func(name uint32, kind ioutil.Type, f *FieldReader) {
 			err = testObj.Fields[fieldIdx].Read(name, kind, f)
 			if err != nil {
 				t.Fatalf("failed at object %d at field %d: %v", objIdx, fieldIdx, err)
@@ -145,7 +146,7 @@ func TestTable(t *testing.T) {
 			testObj := testSet[objIdx]
 
 			fieldIdx := 0
-			obj.WithFields(func(name uint32, kind DataType, f *LEBuffer) {
+			obj.WithFields(func(name uint32, kind ioutil.Type, f *FieldReader) {
 				err = testObj.Fields[fieldIdx].Read(name, kind, f)
 				if err != nil {
 					t.Fatalf("failed at object %d at field %d: %v", objIdx, fieldIdx, err)
@@ -171,13 +172,13 @@ type TestObject struct {
 
 type TestField struct {
 	Name  uint32
-	Kind  DataType
+	Kind  ioutil.Type
 	Value interface{}
 }
 
 var tmp64k = make([]byte, 1024*64)
 
-func (t TestField) Read(name uint32, kind DataType, f *LEBuffer) error {
+func (t TestField) Read(name uint32, kind ioutil.Type, f *FieldReader) error {
 	if t.Name != name {
 		return fmt.Errorf("expected name %d but got %d", t.Name, name)
 	}
@@ -187,40 +188,40 @@ func (t TestField) Read(name uint32, kind DataType, f *LEBuffer) error {
 	}
 
 	switch t.Kind {
-	case TUint8:
+	case ioutil.TUint8:
 		v := t.Value.(uint8)
 		v1 := f.ReadUint8()
 		if v != v1 {
 			return fmt.Errorf("expected uint8 %v but got %v", v, v1)
 		}
-	case TUint16:
+	case ioutil.TUint16:
 		v := t.Value.(uint16)
 		v1 := f.ReadUint16()
 		if v != v1 {
 			return fmt.Errorf("expected uint16 %v but got %v", v, v1)
 		}
-	case TUint24:
+	case ioutil.TUint24:
 		v := t.Value.(uint32)
 		v1 := f.ReadUint24()
 		if v != v1 {
 			return fmt.Errorf("expected uint24 %v but got %v", v, v1)
 		}
-	case TUint32:
+	case ioutil.TUint32:
 		v := t.Value.(uint32)
 		v1 := f.ReadUint32()
 		if v != v1 {
 			return fmt.Errorf("expected uint32 %v but got %v", v, v1)
 		}
-	case TUint64:
+	case ioutil.TUint64:
 		v := t.Value.(uint64)
 		v1 := f.ReadUint64()
 		if v != v1 {
 			return fmt.Errorf("expected uint64 %v but got %v", v, v1)
 		}
-	case TTinyBlob:
+	case ioutil.TBlob8:
 		v := t.Value.([]byte)
 
-		lTmp := f.ReadTinyBlob(tmp64k)
+		lTmp := f.ReadBlob8(tmp64k)
 		if len(v) != lTmp {
 			return fmt.Errorf("expected tinyBlob length %d but got %d", len(v), lTmp)
 		}
@@ -228,9 +229,9 @@ func (t TestField) Read(name uint32, kind DataType, f *LEBuffer) error {
 		if !bytes.Equal(v, tmp64k[:len(v)]) {
 			return fmt.Errorf("expected tinyBlob equal \n%v but got \n%v", v, tmp64k[:len(v)])
 		}
-	case TBlob:
+	case ioutil.TBlob16:
 		v := t.Value.([]byte)
-		lTmp := f.ReadBlob(tmp64k)
+		lTmp := f.ReadBlob16(tmp64k)
 		if len(v) != lTmp {
 			return fmt.Errorf("expected Blob length %d but got %d", len(v), lTmp)
 		}
@@ -238,9 +239,9 @@ func (t TestField) Read(name uint32, kind DataType, f *LEBuffer) error {
 		if !bytes.Equal(v, tmp64k[:len(v)]) {
 			return fmt.Errorf("expected Blob equal %v but got %v", v, tmp64k[:len(v)])
 		}
-	case TMediumBlob:
+	case ioutil.TBlob24:
 		v := t.Value.([]byte)
-		lTmp := f.ReadMediumBlob(tmp64k)
+		lTmp := f.ReadBlob24(tmp64k)
 		if len(v) != lTmp {
 			return fmt.Errorf("expected mediumBlob length %d but got %d", len(v), lTmp)
 		}
@@ -248,9 +249,9 @@ func (t TestField) Read(name uint32, kind DataType, f *LEBuffer) error {
 		if !bytes.Equal(v, tmp64k[:len(v)]) {
 			return fmt.Errorf("expected mediumBlob equal %v but got %v", v, tmp64k[:len(v)])
 		}
-	case TLongBlob:
+	case ioutil.TBlob32:
 		v := t.Value.([]byte)
-		lTmp := f.ReadLongBlob(tmp64k)
+		lTmp := f.ReadBlob32(tmp64k)
 		if len(v) != lTmp {
 			return fmt.Errorf("expected longBlob length %d but got %d", len(v), lTmp)
 		}
@@ -258,13 +259,13 @@ func (t TestField) Read(name uint32, kind DataType, f *LEBuffer) error {
 		if !bytes.Equal(v, tmp64k[:len(v)]) {
 			return fmt.Errorf("expected longBlob equal \n%v but got \n%v", v, tmp64k[:len(v)])
 		}
-	case TFloat32:
+	case ioutil.TFloat32:
 		v := t.Value.(float32)
 		v1 := f.ReadFloat32()
 		if v != v1 {
 			return fmt.Errorf("expected float32 %v but got %v", v, v1)
 		}
-	case TFloat64:
+	case ioutil.TFloat64:
 		v := t.Value.(float64)
 		v1 := f.ReadFloat64()
 		if v != v1 {
@@ -277,29 +278,29 @@ func (t TestField) Read(name uint32, kind DataType, f *LEBuffer) error {
 	return nil
 }
 
-func (t TestField) Write(f *LEBuffer) {
+func (t TestField) Write(f *FieldWriter) {
 	switch t.Kind {
-	case TUint8:
+	case ioutil.TUint8:
 		f.WriteUint8(t.Value.(uint8))
-	case TUint16:
+	case ioutil.TUint16:
 		f.WriteUint16(t.Value.(uint16))
-	case TUint24:
+	case ioutil.TUint24:
 		f.WriteUint24(t.Value.(uint32))
-	case TUint32:
+	case ioutil.TUint32:
 		f.WriteUint32(t.Value.(uint32))
-	case TUint64:
+	case ioutil.TUint64:
 		f.WriteUint64(t.Value.(uint64))
-	case TTinyBlob:
-		f.WriteTinyBlob(t.Value.([]byte))
-	case TBlob:
-		f.WriteBlob(t.Value.([]byte))
-	case TMediumBlob:
-		f.WriteMediumBlob(t.Value.([]byte))
-	case TLongBlob:
-		f.WriteLongBlob(t.Value.([]byte))
-	case TFloat32:
+	case ioutil.TBlob8:
+		f.WriteBlob8(t.Value.([]byte))
+	case ioutil.TBlob16:
+		f.WriteBlob16(t.Value.([]byte))
+	case ioutil.TBlob24:
+		f.WriteBlob24(t.Value.([]byte))
+	case ioutil.TBlob32:
+		f.WriteBlob32(t.Value.([]byte))
+	case ioutil.TFloat32:
 		f.WriteFloat32(t.Value.(float32))
-	case TFloat64:
+	case ioutil.TFloat64:
 		f.WriteFloat64(t.Value.(float64))
 	default:
 		panic("not implemented " + strconv.Itoa(int(t.Kind)))
@@ -335,48 +336,50 @@ func generateFields() []TestField {
 	return r
 }
 
-func randomKind() DataType {
-	kind := DataType(0)
-	for kind < minTValid || kind > maxTValid {
-		kind = DataType(random.Intn(int(maxTValid) + 1))
-	}
-	return kind
+var testedTypes = []ioutil.Type{
+	ioutil.TUint8, ioutil.TUint16, ioutil.TUint24, ioutil.TUint32, ioutil.TUint64, ioutil.TBlob8, ioutil.TBlob24, ioutil.TBlob16, ioutil.TBlob32, ioutil.TFloat64, ioutil.TFloat32,
+}
+
+func randomKind() ioutil.Type {
+
+	n := random.Intn(len(testedTypes))
+	return testedTypes[n]
 }
 
 var random = rand.New(rand.NewSource(1234))
 
-func generateValue(kind DataType) interface{} {
+func generateValue(kind ioutil.Type) interface{} {
 	switch kind {
-	case TUint8:
+	case ioutil.TUint8:
 		return uint8(random.Uint32())
-	case TUint16:
+	case ioutil.TUint16:
 		return uint16(random.Uint32())
-	case TUint24:
+	case ioutil.TUint24:
 		b := make([]byte, 3)
 		random.Read(b)
 		return uint32(b[0]) | uint32(b[1])<<8 | uint32(b[2])<<16
-	case TUint32:
+	case ioutil.TUint32:
 		return random.Uint32()
-	case TUint64:
+	case ioutil.TUint64:
 		return random.Uint64()
-	case TTinyBlob:
+	case ioutil.TBlob8:
 		maxLen := byte(random.Uint32())
 		tmp := make([]byte, maxLen)
 		random.Read(tmp)
 		return tmp
-	case TMediumBlob:
+	case ioutil.TBlob24:
 		fallthrough //TODO 64k max size limit?
-	case TLongBlob:
+	case ioutil.TBlob32:
 		fallthrough //TODO 64k max size limit?
-	case TBlob:
+	case ioutil.TBlob16:
 		maxLen := byte(random.Uint32()) * 2
 		tmp := make([]byte, maxLen)
 		random.Read(tmp)
 		return tmp
 
-	case TFloat32:
+	case ioutil.TFloat32:
 		return random.Float32()
-	case TFloat64:
+	case ioutil.TFloat64:
 		return random.Float64()
 	default:
 		panic("not implemented " + strconv.Itoa(int(kind)))

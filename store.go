@@ -55,11 +55,13 @@ func (db *DB) Add(f func(obj *Object) error) error {
 	}
 
 	obj := db.tmpWriteObj
-	obj.Reset()
+	obj.resetWrite()
 	err := f(obj)
 	if err != nil {
 		return err
 	}
+
+	obj.flush()
 	record.Add(obj)
 	return nil
 }
@@ -101,7 +103,8 @@ func (db *DB) Read(id uint64, f func(obj *Object) error) error {
 	obj := db.objPool.Get().(*Object)
 	defer db.objPool.Put(obj)
 
-	_, err := db.reader.ReadAt(int64(id), obj.buf.Buf)
+	_, err := db.reader.ReadAt(int64(id), obj.buf.Bytes)
+	obj.reverseFlush()
 	if err != nil {
 		return err
 	}
@@ -120,7 +123,7 @@ func (db *DB) ForEach(f func(id uint64, obj *Object) error) error {
 
 	offset := int64(0)
 	for offset < db.eof {
-		lBuf, err := db.file.ReadAt(record.buf.Buf, offset)
+		lBuf, err := db.file.ReadAt(record.buf.Bytes, offset)
 		if err != nil {
 			if err != io.EOF {
 				return err

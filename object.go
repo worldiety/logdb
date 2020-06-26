@@ -1,5 +1,7 @@
 package logdb
 
+import "github.com/worldiety/ioutil"
+
 const (
 	offsetSize       = 0
 	offsetFieldCount = 4
@@ -18,51 +20,59 @@ const (
 //       - value          variable, depending on type
 //     }
 type Object struct {
-	buf *LEBuffer
+	buf              *ioutil.LittleEndianBuffer
+	size, fieldCount uint32
 }
 
 func newObject(maxSize int) *Object {
-	o := &Object{buf: &LEBuffer{
-		Buf: make([]byte, maxSize),
+	o := &Object{buf: &ioutil.LittleEndianBuffer{
+		Bytes: make([]byte, maxSize),
 	}}
-	o.Reset()
+	o.resetWrite()
 	return o
 }
 
 func (d *Object) Size() uint32 {
-	d.buf.Pos = offsetSize
-	return d.buf.ReadUint32()
+	return d.size
 }
 
 func (d *Object) setSize(s uint32) {
-	d.buf.Pos = offsetSize
-	d.buf.WriteUint32(s)
+	d.size = s
 }
 
 func (d *Object) FieldCount() uint32 {
-	d.buf.Pos = offsetFieldCount
-	return d.buf.ReadUint32()
+	return d.fieldCount
 }
 
 func (d *Object) setFieldCount(v uint32) {
+	d.fieldCount = v
+}
+
+// flush writes some numbers into the buffer, like size and field count
+func (d *Object) flush() {
+
 	d.buf.Pos = offsetFieldCount
-	d.buf.WriteUint32(v)
+	d.buf.WriteUint32(d.fieldCount)
+
+	d.buf.Pos = offsetSize
+	d.buf.WriteUint32(d.size)
 }
 
 func (d *Object) Bytes() []byte {
-	return d.buf.Buf[:d.Size()]
+	return d.buf.Bytes[:d.Size()]
 }
 
 // WithFields iterates over each available field. This is the fastest
 // thing we can do.
-func (d *Object) WithFields(f func(name uint32, kind DataType, f *LEBuffer)) {
+func (d *Object) WithFields(f func(name uint32, kind ioutil.Type, f *FieldReader)) {
 	count := int(d.FieldCount())
 	d.buf.Pos = offsetFieldList
 	for i := 0; i < count; i++ {
 		name := d.buf.ReadUint32()
-		kind := DataType(d.buf.ReadUint8())
+		kind := d.buf.ReadType()
 		myDrainPos := d.buf.Pos
-		f(name, kind, d.buf)
+		d.buf.Pos--
+		f(name, kind, (*FieldReader)(d.buf))
 
 		// reset the pos to ensure we are correct, independently what f has done
 		d.buf.Pos = myDrainPos
@@ -71,20 +81,25 @@ func (d *Object) WithFields(f func(name uint32, kind DataType, f *LEBuffer)) {
 }
 
 // AddField appends another field.
-func (d *Object) AddField(name uint32, kind DataType, f func(f *LEBuffer)) {
+func (d *Object) AddField(name uint32, f func(f *FieldWriter)) {
 	count := d.FieldCount()
 	d.buf.Pos = int(d.Size())
 	d.buf.WriteUint32(name)
-	d.buf.WriteUint8(uint8(kind))
-	f(d.buf)
+	f((*FieldWriter)(d.buf))
 	d.setSize(uint32(d.buf.Pos))
 	d.setFieldCount(count + 1)
 }
 
-
-
 // Reset sets the length to the minimum length
-func (d *Object) Reset() {
+func (d *Object) resetWrite() {
 	d.setSize(offsetFieldList)
 	d.setFieldCount(0)
+}
+
+func (d *Object) reverseFlush() {
+	d.buf.Pos = offsetSize
+	d.size = d.buf.ReadUint32()
+
+	d.buf.Pos = offsetFieldCount
+	d.fieldCount = d.buf.ReadUint32()
 }

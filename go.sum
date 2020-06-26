@@ -7,3 +7,9 @@ github.com/worldiety/ioutil v0.0.0-20200218105628-f01bd4ba8dd8 h1:1MzLj3FBzoEsD0
 github.com/worldiety/ioutil v0.0.0-20200218105628-f01bd4ba8dd8/go.mod h1:BdaPI7SxP9HTK7ixxvzsefmPKzrkRowbpT+1x3iPmmY=
 github.com/worldiety/ioutil v0.0.0-20200623122521-9528601101ef h1:D4YHXMVe4YGnXYRhZkuDpjUbegt4Qg0zYnpIqhySKFg=
 github.com/worldiety/ioutil v0.0.0-20200623122521-9528601101ef/go.mod h1:BdaPI7SxP9HTK7ixxvzsefmPKzrkRowbpT+1x3iPmmY=
+github.com/worldiety/ioutil v0.0.0-20200626122232-a6a15ec44896 h1:XfU7qimwf+AMB37xOWomU4ysUCrhrJmZC/pdRQ+E5ac=
+github.com/worldiety/ioutil v0.0.0-20200626122232-a6a15ec44896/go.mod h1:BdaPI7SxP9HTK7ixxvzsefmPKzrkRowbpT+1x3iPmmY=
+github.com/worldiety/ioutil v0.0.0-20200626140705-5709df3eed19 h1:Ul6vKY6mF6NGK58j3YZdvwRab7g7kBlxAIKoQpykmzA=
+github.com/worldiety/ioutil v0.0.0-20200626140705-5709df3eed19/go.mod h1:BdaPI7SxP9HTK7ixxvzsefmPKzrkRowbpT+1x3iPmmY=
+github.com/worldiety/ioutil v0.0.0-20200626141522-3aa8ff067df8 h1:75Yh228z2ntqm1cM5aI1N3nXywaXK2/PLvenpwYhGfM=
+github.com/worldiety/ioutil v0.0.0-20200626141522-3aa8ff067df8/go.mod h1:BdaPI7SxP9HTK7ixxvzsefmPKzrkRowbpT+1x3iPmmY=
