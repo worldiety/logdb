@@ -8,7 +8,7 @@ func (f *FieldWriter) WriteBlob(dst []byte) {
 	(*ioutil.TypedLittleEndianBuffer)(f).WriteBlob(dst)
 }
 
-func (f *FieldWriter) WriteMutableString(str string) {
+func (f *FieldWriter) WriteString(str string) {
 	(*ioutil.TypedLittleEndianBuffer)(f).WriteString(str)
 }
 
