@@ -328,7 +328,7 @@ func generateFields() []TestField {
 	for i := 0; i < fieldCount; i++ {
 		kind := randomKind()
 		r = append(r, TestField{
-			Name:  random.Uint32(),
+			Name:  uint32(uint16(random.Uint32())),
 			Kind:  kind,
 			Value: generateValue(kind),
 		})

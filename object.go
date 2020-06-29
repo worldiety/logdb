@@ -12,7 +12,7 @@ const (
 //
 // Format specification:
 //  - size                uint32, including size (4 byte)
-//  - fieldCount          uint32
+//  - fieldCount          uint16
 //  - []                  variable, depending on count
 //     {
 //       - name           uint32
@@ -68,11 +68,11 @@ func (d *Object) WithFields(f func(name uint32, kind ioutil.Type, f *FieldReader
 	count := int(d.FieldCount())
 	d.buf.Pos = offsetFieldList
 	for i := 0; i < count; i++ {
-		name := d.buf.ReadUint32()
+		name := d.buf.ReadUint16()
 		kind := d.buf.ReadType()
 		myDrainPos := d.buf.Pos
 		d.buf.Pos--
-		f(name, kind, (*FieldReader)(d.buf))
+		f(uint32(name), kind, (*FieldReader)(d.buf))
 
 		// reset the pos to ensure we are correct, independently what f has done
 		d.buf.Pos = myDrainPos
@@ -84,7 +84,7 @@ func (d *Object) WithFields(f func(name uint32, kind ioutil.Type, f *FieldReader
 func (d *Object) AddField(name uint32, f func(f *FieldWriter)) {
 	count := d.FieldCount()
 	d.buf.Pos = int(d.Size())
-	d.buf.WriteUint32(name)
+	d.buf.WriteUint16(uint16(name))
 	f((*FieldWriter)(d.buf))
 	d.setSize(uint32(d.buf.Pos))
 	d.setFieldCount(count + 1)
