@@ -3,19 +3,25 @@ package logdb
 import "github.com/worldiety/ioutil"
 
 const (
-	offsetRecSize     = 0
-	offsetRecObjCount = 4
-	offsetRecObjList  = 8
+	offsetRecMagic    = 0
+	offsetRecSize     = 8
+	offsetRecObjCount = 12
+	offsetRecObjList  = 16
 )
 
+var recordMagic = [8]byte{'w', 'd', 'y', 'r', 'e', 'c', '0', '1'}
+
 type Record struct {
-	buf *ioutil.LittleEndianBuffer
+	magic    [8]byte
+	buf      *ioutil.LittleEndianBuffer
+	size     uint32
+	objCount uint32
 }
 
 func newRecord(maxSize int) *Record {
 	r := &Record{buf: &ioutil.LittleEndianBuffer{
-		Bytes: make([]byte, maxSize),
-	}}
+		Bytes: make([]byte, maxSize)},
+		magic: recordMagic}
 	r.Reset()
 	return r
 }
@@ -25,23 +31,19 @@ func (d *Record) MaxSize() int {
 }
 
 func (d *Record) Size() uint32 {
-	d.buf.Pos = offsetRecSize
-	return d.buf.ReadUint32()
+	return d.size
 }
 
 func (d *Record) setSize(s uint32) {
-	d.buf.Pos = offsetRecSize
-	d.buf.WriteUint32(s)
+	d.size = s
 }
 
 func (d *Record) ObjectCount() uint32 {
-	d.buf.Pos = offsetRecObjCount
-	return d.buf.ReadUint32()
+	return d.objCount
 }
 
 func (d *Record) setObjectCount(v uint32) {
-	d.buf.Pos = offsetRecObjCount
-	d.buf.WriteUint32(v)
+	d.objCount = v
 }
 
 func (d *Record) Bytes() []byte {
@@ -67,8 +69,9 @@ func (d *Record) ForEach(tmp *Object, f func(offset int, object *Object) error) 
 	count := int(d.ObjectCount())
 	d.buf.Pos = offsetRecObjList
 	for i := 0; i < count; i++ {
-		size := d.buf.ReadUint32()
-		d.buf.Pos -= 4
+		_ = offsetSize // for documentation only
+		size := d.buf.ReadUint24()
+		d.buf.Pos -= 3
 		objBuf := d.buf.Bytes[d.buf.Pos : d.buf.Pos+int(size)]
 		copy(tmp.buf.Bytes, objBuf)
 		tmp.reverseFlush()
@@ -79,4 +82,23 @@ func (d *Record) ForEach(tmp *Object, f func(offset int, object *Object) error) 
 	}
 
 	return nil
+}
+
+func (d *Record) flush() {
+	d.buf.Pos = offsetRecMagic
+	d.buf.WriteSlice(d.magic[:])
+
+	d.buf.Pos = offsetRecSize
+	d.buf.WriteUint32(d.size)
+
+	d.buf.Pos = offsetRecObjCount
+	d.buf.WriteUint32(d.objCount)
+}
+
+func (d *Record) reverseFlush() {
+	d.buf.Pos = offsetRecSize
+	d.size = d.buf.ReadUint32()
+
+	d.buf.Pos = offsetRecObjCount
+	d.objCount = d.buf.ReadUint32()
 }

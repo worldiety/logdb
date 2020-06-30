@@ -4,24 +4,25 @@ import "github.com/worldiety/ioutil"
 
 const (
 	offsetSize       = 0
-	offsetFieldCount = 4
-	offsetFieldList  = 8
+	offsetFieldCount = 3
+	offsetFieldList  = 7
 )
 
 // An Object contains all field data and fits into memory.
 //
 // Format specification:
-//  - size                uint32, including size (4 byte)
-//  - fieldCount          uint16
+//  - size                uint24, including size (3 byte), at most 16MiB
+//  - fieldCount          uint16, at most 65.536
 //  - []                  variable, depending on count
 //     {
-//       - name           uint32
+//       - name           uint16, at most 65.536 per object file
 //       - fieldType      uint8
 //       - value          variable, depending on type
 //     }
 type Object struct {
-	buf              *ioutil.LittleEndianBuffer
-	size, fieldCount uint32
+	buf        *ioutil.LittleEndianBuffer
+	size       uint32
+	fieldCount uint16
 }
 
 func newObject(maxSize int) *Object {
@@ -40,11 +41,11 @@ func (d *Object) setSize(s uint32) {
 	d.size = s
 }
 
-func (d *Object) FieldCount() uint32 {
+func (d *Object) FieldCount() uint16 {
 	return d.fieldCount
 }
 
-func (d *Object) setFieldCount(v uint32) {
+func (d *Object) setFieldCount(v uint16) {
 	d.fieldCount = v
 }
 
@@ -52,10 +53,10 @@ func (d *Object) setFieldCount(v uint32) {
 func (d *Object) flush() {
 
 	d.buf.Pos = offsetFieldCount
-	d.buf.WriteUint32(d.fieldCount)
+	d.buf.WriteUint16(d.fieldCount)
 
 	d.buf.Pos = offsetSize
-	d.buf.WriteUint32(d.size)
+	d.buf.WriteUint24(d.size)
 }
 
 func (d *Object) Bytes() []byte {
@@ -98,8 +99,8 @@ func (d *Object) resetWrite() {
 
 func (d *Object) reverseFlush() {
 	d.buf.Pos = offsetSize
-	d.size = d.buf.ReadUint32()
+	d.size = d.buf.ReadUint24()
 
 	d.buf.Pos = offsetFieldCount
-	d.fieldCount = d.buf.ReadUint32()
+	d.fieldCount = d.buf.ReadUint16()
 }

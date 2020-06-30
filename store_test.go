@@ -13,6 +13,8 @@ import (
 	"time"
 )
 
+const defaultTableSize = 10_000
+
 func TestObj(t *testing.T) {
 	obj := newObject(1024 * 64)
 	obj.AddField(1, func(f *FieldWriter) {
@@ -65,18 +67,122 @@ func TestOpen(t *testing.T) {
 	defer db.Close()
 }
 
-func assertNil(t *testing.T, i interface{}) {
+func assertNil(t interface {
+	Helper()
+	Fatalf(string, ...interface{})
+}, i interface{}) {
 	t.Helper()
 	if i != nil {
 		t.Fatalf("expected nil but got '%v'", i)
 	}
 }
 
+func BenchmarkWrite(b *testing.B) {
+	testSet := createTestTable(10)
+
+	dir, err := ioutil2.TempDir("", "tableTest")
+	assertNil(b, err)
+
+	fmt.Println(dir)
+
+	fname := filepath.Join(dir, "tabledb.bin")
+	_ = os.Remove(fname)
+	db, err := Open(fname)
+	assertNil(b, err)
+
+	b.Run("table", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			for _, testObj := range testSet {
+				err = db.Add(func(obj *Object) error {
+					for _, field := range testObj.Fields {
+						obj.AddField(field.Name, field.Write)
+					}
+					return nil
+				})
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		}
+	})
+
+	err = db.Close()
+
+}
+
+func BenchmarkRead(b *testing.B) {
+	testSet := createTestTable(defaultTableSize)
+
+	dir, err := ioutil2.TempDir("", "tableTest")
+	assertNil(b, err)
+
+	fmt.Println(dir)
+
+	fname := filepath.Join(dir, "tabledb.bin")
+	_ = os.Remove(fname)
+	db, err := Open(fname)
+	assertNil(b, err)
+
+	start := time.Now()
+	for _, testObj := range testSet {
+		err = db.Add(func(obj *Object) error {
+			for _, field := range testObj.Fields {
+				obj.AddField(field.Name, field.Write)
+			}
+			return nil
+		})
+		assertNil(b, err)
+	}
+
+	err = db.Close()
+	assertNil(b, err)
+	eps := float64(len(testSet)) / float64(time.Now().Sub(start)) * float64(time.Second)
+	fmt.Printf("needed %v to insert %d entries (%2.f entries/second)\n", time.Now().Sub(start), len(testSet), eps)
+
+
+	db, err = Open(fname)
+	assertNil(b, err)
+	defer db.Close()
+
+	b.Run("table", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			objIdx := 0
+			err = db.ForEach(func(id uint64, obj *Object) error {
+				testObj := testSet[objIdx]
+
+				fieldIdx := 0
+				obj.WithFields(func(name uint32, kind ioutil.Type, f *FieldReader) {
+					err = testObj.Fields[fieldIdx].Read(name, kind, f)
+					if err != nil {
+						b.Fatalf("failed at object %d at field %d: %v", objIdx, fieldIdx, err)
+					}
+					fieldIdx++
+				})
+
+
+				objIdx++
+				return nil
+			})
+
+			if err != nil{
+				b.Fatal(err)
+			}
+		}
+
+	})
+
+
+}
+
 func TestTable(t *testing.T) {
-	testSet := createTestTable()
+	testSet := createTestTable(defaultTableSize)
 
 	dir, err := ioutil2.TempDir("", "tableTest")
 	assertNil(t, err)
+
+	fmt.Println(dir)
 
 	fname := filepath.Join(dir, "tabledb.bin")
 	_ = os.Remove(fname)
@@ -307,10 +413,10 @@ func (t TestField) Write(f *FieldWriter) {
 	}
 }
 
-func createTestTable() []TestObject {
+func createTestTable(max int) []TestObject {
 	fmt.Println("creating table...")
 	var r []TestObject
-	for i := 0; i < 10_000; i++ {
+	for i := 0; i < max; i++ {
 		myObj := TestObject{}
 		fields := generateFields()
 		for _, f := range fields {

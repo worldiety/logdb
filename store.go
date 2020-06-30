@@ -68,6 +68,7 @@ func (db *DB) Add(f func(obj *Object) error) error {
 
 func (db *DB) Flush() error {
 	record := db.pendingWriteRecord
+	record.flush()
 
 	tmp := record.Bytes()
 	if len(tmp) == offsetRecObjList {
@@ -134,6 +135,7 @@ func (db *DB) ForEach(f func(id uint64, obj *Object) error) error {
 			return fmt.Errorf("unable to read a record at offset %d", offset)
 		}
 
+		record.reverseFlush()
 		err = record.ForEach(obj, func(recOffset int, object *Object) error {
 			return f(uint64(offset)+uint64(recOffset), object)
 		})
