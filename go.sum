@@ -13,3 +13,7 @@ github.com/worldiety/ioutil v0.0.0-20200626140705-5709df3eed19 h1:Ul6vKY6mF6NGK5
 github.com/worldiety/ioutil v0.0.0-20200626140705-5709df3eed19/go.mod h1:BdaPI7SxP9HTK7ixxvzsefmPKzrkRowbpT+1x3iPmmY=
 github.com/worldiety/ioutil v0.0.0-20200626141522-3aa8ff067df8 h1:75Yh228z2ntqm1cM5aI1N3nXywaXK2/PLvenpwYhGfM=
 github.com/worldiety/ioutil v0.0.0-20200626141522-3aa8ff067df8/go.mod h1:BdaPI7SxP9HTK7ixxvzsefmPKzrkRowbpT+1x3iPmmY=
+github.com/worldiety/ioutil v0.0.0-20200701154211-8605f555c247 h1:yzlLpAw/TmZwLTZU8dVaLCrXBzgfKGHp6ignxY8rwso=
+github.com/worldiety/ioutil v0.0.0-20200701154211-8605f555c247/go.mod h1:BdaPI7SxP9HTK7ixxvzsefmPKzrkRowbpT+1x3iPmmY=
+github.com/worldiety/ioutil v0.0.0-20200701154709-6d160e43a609 h1:C32n5Wfy3SgdKQ3u0NorgXQNwGzUVXX5nQMyY1csHRk=
+github.com/worldiety/ioutil v0.0.0-20200701154709-6d160e43a609/go.mod h1:BdaPI7SxP9HTK7ixxvzsefmPKzrkRowbpT+1x3iPmmY=

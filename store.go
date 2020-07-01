@@ -2,6 +2,7 @@ package logdb
 
 import (
 	"fmt"
+	"github.com/worldiety/ioutil"
 	"io"
 	"os"
 	"sync"
@@ -16,6 +17,7 @@ type DB struct {
 	maxRecSize         int
 	reader             *concurrentCachedReader
 	objPool            sync.Pool
+	header             *Header
 }
 
 func Open(fname string) (*DB, error) {
@@ -32,8 +34,9 @@ func Open(fname string) (*DB, error) {
 	fmt.Printf("db size is %d (%d MiB)\n", stat.Size(), stat.Size()/1024/1024)
 
 	db := &DB{file: file, eof: stat.Size()}
-	db.maxObjSize = 1024 * 64            // 64k max object size
-	db.maxRecSize = db.maxObjSize * 1000 // 64MB max batch size
+	db.maxObjSize = 1024 * 64                                           // 64k max object size
+	db.maxRecSize = db.maxObjSize * 1000                                // 64MB max batch size
+	db.header = newHeader(int(ioutil.MaxUint8) * int(ioutil.MaxUint16)) // 16mb
 	db.pendingWriteRecord = newRecord(db.maxRecSize)
 	db.tmpWriteObj = newObject(db.maxObjSize)
 	db.reader, err = newConcurrentCachedReader(db.file, db.maxRecSize)
@@ -43,7 +46,51 @@ func Open(fname string) (*DB, error) {
 	db.objPool = sync.Pool{
 		New: func() interface{} { return newObject(db.maxObjSize) },
 	}
+
+	if db.eof == 0 {
+		db.header.Flush()
+		_, err := db.file.Write(db.header.buf.Bytes)
+		if err != nil {
+			_ = db.file.Close()
+			return nil, fmt.Errorf("unable to create db header: %w", err)
+		}
+		db.eof = int64(len(db.header.buf.Bytes))
+
+	} else {
+		if db.eof < int64(len(db.header.buf.Bytes)) {
+			_ = db.file.Close()
+			return nil, fmt.Errorf("truncated database file, header to short: %w", err)
+		} else {
+			_, err := db.file.Read(db.header.buf.Bytes)
+			if err != nil {
+				_ = db.file.Close()
+				return nil, fmt.Errorf("unable to read header: %w", err)
+			}
+			db.header.reverseFlush()
+		}
+	}
+
+	fmt.Printf("names: %d\n", db.header.nameCount)
+	fmt.Printf("objects: %d\n", db.header.ObjectCount())
+	fmt.Printf("last transaction: %d\n", db.header.TxCount())
+
 	return db, nil
+}
+
+func (db *DB) NameByIndex(idx int) string {
+	return db.header.NameByIndex(idx)
+}
+
+func (db *DB) IndexByName(name string) int {
+	return db.header.IndexByName(name)
+}
+
+func (db *DB) PutName(name string) int {
+	return db.header.AddName(name)
+}
+
+func (db *DB) Names() []string {
+	return db.header.Names()
 }
 
 func (db *DB) Add(f func(obj *Object) error) error {
@@ -63,6 +110,7 @@ func (db *DB) Add(f func(obj *Object) error) error {
 
 	obj.flush()
 	record.Add(obj)
+	db.header.AddObjectCount(1)
 	return nil
 }
 
@@ -87,11 +135,24 @@ func (db *DB) Flush() error {
 	db.eof += int64(len(tmp))
 	record.Reset()
 
+	db.header.AddTxCount(1)
 	return nil
+}
+
+func (db *DB) flushHeader() error {
+	header := db.header
+	header.Flush()
+
+	_, err := db.file.WriteAt(header.buf.Bytes, 0)
+	return err
 }
 
 func (db *DB) Close() error {
 	if err := db.Flush(); err != nil {
+		return err
+	}
+
+	if err := db.flushHeader(); err != nil {
 		return err
 	}
 
@@ -122,7 +183,7 @@ func (db *DB) ForEach(f func(id uint64, obj *Object) error) error {
 	record := newRecord(db.pendingWriteRecord.MaxSize())
 	obj := newObject(db.maxObjSize)
 
-	offset := int64(0)
+	offset := int64(len(db.header.buf.Bytes))
 	for offset < db.eof {
 		lBuf, err := db.file.ReadAt(record.buf.Bytes, offset)
 		if err != nil {

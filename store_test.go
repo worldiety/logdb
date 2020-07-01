@@ -140,7 +140,6 @@ func BenchmarkRead(b *testing.B) {
 	eps := float64(len(testSet)) / float64(time.Now().Sub(start)) * float64(time.Second)
 	fmt.Printf("needed %v to insert %d entries (%2.f entries/second)\n", time.Now().Sub(start), len(testSet), eps)
 
-
 	db, err = Open(fname)
 	assertNil(b, err)
 	defer db.Close()
@@ -161,22 +160,22 @@ func BenchmarkRead(b *testing.B) {
 					fieldIdx++
 				})
 
-
 				objIdx++
 				return nil
 			})
 
-			if err != nil{
+			if err != nil {
 				b.Fatal(err)
 			}
 		}
 
 	})
 
-
 }
 
 func TestTable(t *testing.T) {
+	fields := []string{"", "A", "a", "jaksndkasjd\n#+\t"}
+
 	testSet := createTestTable(defaultTableSize)
 
 	dir, err := ioutil2.TempDir("", "tableTest")
@@ -188,6 +187,26 @@ func TestTable(t *testing.T) {
 	_ = os.Remove(fname)
 	db, err := Open(fname)
 	assertNil(t, err)
+
+	for _, field := range fields {
+		if db.IndexByName(field) != -1 {
+			t.Fatal()
+		}
+	}
+
+	for _, field := range fields {
+		db.PutName(field)
+	}
+
+	for i, field := range fields {
+		if db.IndexByName(field) != i {
+			t.Fatal()
+		}
+	}
+
+	if db.PutName("A") != 1 {
+		t.Fatal()
+	}
 
 	start := time.Now()
 	for _, testObj := range testSet {
@@ -209,6 +228,12 @@ func TestTable(t *testing.T) {
 	db, err = Open(fname)
 	assertNil(t, err)
 	defer db.Close()
+
+	for i, field := range fields {
+		if db.IndexByName(field) != i {
+			t.Fatal()
+		}
+	}
 
 	tableOffsets := make([]uint64, len(testSet))
 	tableCheck := make([]bool, len(testSet))
