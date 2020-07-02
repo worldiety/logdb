@@ -65,3 +65,10 @@ to use a float32 instead of a float64. This way, we have a kind of a *semantic c
 which is even magnitudes faster than compression algorithms like LZ4, even though
 our prefix-style is so primitive and still wasteful.
 
+## downsides of the design
+It is not intended to be able to delete any entries. It is also not really possible
+to update entries, though one may at least update any data field, as long as
+the required byte width will not change. Inserting and reading concurrently
+may be possible but will probably performs bad, especially for random access
+in the current implementation, which is optimized for sequential single user/thread 
+processing.
