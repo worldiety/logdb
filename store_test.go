@@ -50,7 +50,7 @@ func TestOpen(t *testing.T) {
 
 	is3 := false
 	err = db.ForEach(func(id uint64, obj *Object) error {
-		obj.WithFields(func(name uint32, kind ioutil.Type, f *FieldReader) {
+		obj.WithFields(func(name uint16, kind ioutil.Type, f *FieldReader) {
 			v := f.ReadFloat()
 			if name == 1 && kind.IsNumber() && v == 3 {
 				is3 = true
@@ -152,7 +152,7 @@ func BenchmarkRead(b *testing.B) {
 				testObj := testSet[objIdx]
 
 				fieldIdx := 0
-				obj.WithFields(func(name uint32, kind ioutil.Type, f *FieldReader) {
+				obj.WithFields(func(name uint16, kind ioutil.Type, f *FieldReader) {
 					err = testObj.Fields[fieldIdx].Read(name, kind, f)
 					if err != nil {
 						b.Fatalf("failed at object %d at field %d: %v", objIdx, fieldIdx, err)
@@ -242,7 +242,7 @@ func TestTable(t *testing.T) {
 		testObj := testSet[objIdx]
 
 		fieldIdx := 0
-		obj.WithFields(func(name uint32, kind ioutil.Type, f *FieldReader) {
+		obj.WithFields(func(name uint16, kind ioutil.Type, f *FieldReader) {
 			err = testObj.Fields[fieldIdx].Read(name, kind, f)
 			if err != nil {
 				t.Fatalf("failed at object %d at field %d: %v", objIdx, fieldIdx, err)
@@ -277,7 +277,7 @@ func TestTable(t *testing.T) {
 			testObj := testSet[objIdx]
 
 			fieldIdx := 0
-			obj.WithFields(func(name uint32, kind ioutil.Type, f *FieldReader) {
+			obj.WithFields(func(name uint16, kind ioutil.Type, f *FieldReader) {
 				err = testObj.Fields[fieldIdx].Read(name, kind, f)
 				if err != nil {
 					t.Fatalf("failed at object %d at field %d: %v", objIdx, fieldIdx, err)
@@ -302,14 +302,14 @@ type TestObject struct {
 }
 
 type TestField struct {
-	Name  uint32
+	Name  uint16
 	Kind  ioutil.Type
 	Value interface{}
 }
 
 var tmp64k = make([]byte, 1024*64)
 
-func (t TestField) Read(name uint32, kind ioutil.Type, f *FieldReader) error {
+func (t TestField) Read(name uint16, kind ioutil.Type, f *FieldReader) error {
 	if t.Name != name {
 		return fmt.Errorf("expected name %d but got %d", t.Name, name)
 	}
@@ -459,7 +459,7 @@ func generateFields() []TestField {
 	for i := 0; i < fieldCount; i++ {
 		kind := randomKind()
 		r = append(r, TestField{
-			Name:  uint32(uint16(random.Uint32())),
+			Name:  uint16(random.Uint32()),
 			Kind:  kind,
 			Value: generateValue(kind),
 		})

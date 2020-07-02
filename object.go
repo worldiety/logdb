@@ -5,7 +5,7 @@ import "github.com/worldiety/ioutil"
 const (
 	offsetSize       = 0
 	offsetFieldCount = 3
-	offsetFieldList  = 7
+	offsetFieldList  = 5
 )
 
 // An Object contains all field data and fits into memory.
@@ -65,7 +65,7 @@ func (d *Object) Bytes() []byte {
 
 // WithFields iterates over each available field. This is the fastest
 // thing we can do.
-func (d *Object) WithFields(f func(name uint32, kind ioutil.Type, f *FieldReader)) {
+func (d *Object) WithFields(f func(name uint16, kind ioutil.Type, f *FieldReader)) {
 	count := int(d.FieldCount())
 	d.buf.Pos = offsetFieldList
 	for i := 0; i < count; i++ {
@@ -73,7 +73,7 @@ func (d *Object) WithFields(f func(name uint32, kind ioutil.Type, f *FieldReader
 		kind := d.buf.ReadType()
 		myDrainPos := d.buf.Pos
 		d.buf.Pos--
-		f(uint32(name), kind, (*FieldReader)(d.buf))
+		f(name, kind, (*FieldReader)(d.buf))
 
 		// reset the pos to ensure we are correct, independently what f has done
 		d.buf.Pos = myDrainPos
@@ -82,10 +82,10 @@ func (d *Object) WithFields(f func(name uint32, kind ioutil.Type, f *FieldReader
 }
 
 // AddField appends another field.
-func (d *Object) AddField(name uint32, f func(f *FieldWriter)) {
+func (d *Object) AddField(name uint16, f func(f *FieldWriter)) {
 	count := d.FieldCount()
 	d.buf.Pos = int(d.Size())
-	d.buf.WriteUint16(uint16(name))
+	d.buf.WriteUint16(name)
 	f((*FieldWriter)(d.buf))
 	d.setSize(uint32(d.buf.Pos))
 	d.setFieldCount(count + 1)
