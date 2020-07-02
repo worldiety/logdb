@@ -42,8 +42,8 @@ in 3,5 hours, not days or weeks! There is still GC in, so we cannot saturate
 the local MySQL server here, but it is already *acceptably* fast. 
 Processing is even faster and limited by the USB-C bus speed, which peaks
 out at around 700-800 MB per second. We were able to create an in-memory
-index by visiting each object (340 million) to read each timestamp in less than
-3 minutes!
+index by visiting each object to read every single timestamp - for 350 million 
+objects in less than 3 minutes!
 
 ## format and restrictions
 *Dragster* never stores field names together with entries, instead it
@@ -58,7 +58,7 @@ allows us to jump through all fields, without doing much parsing work. Our
 data set also contained a lot of small numbers, which came all in as float64,
 so we introduced an automatic detection of the smallest available data type
 to represent the number in a (mostly) lossless format. E.g. a float64, which
-has a delta of less than 10^9 to the next natural number is stored as an 
+has a delta of less than 10^-9 to the next natural number is stored as an 
 integer. For the integer itself, we check how many bytes are needed (8/16/24/32/40/48/56 or 64)
 and use the smallest possible one. We also have a similar check
 to use a float32 instead of a float64. This way, we have a kind of a *semantic compression*
