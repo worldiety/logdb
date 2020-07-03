@@ -77,7 +77,9 @@ func (d *Object) WithFields(f func(name uint16, kind ioutil.Type, f *FieldReader
 
 		// reset the pos to ensure we are correct, independently what f has done
 		d.buf.Pos = myDrainPos
-		d.buf.Drain(kind)
+		if i := d.buf.DrainFast(kind); i == -1 {
+			d.buf.Drain(kind)
+		}
 	}
 }
 

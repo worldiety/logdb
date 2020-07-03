@@ -1,5 +1,5 @@
 # dragster / dragsterdb
-*dragster* is a database to turn some *big data* problems for servers into 
+*dragster* is a NoSQL database to turn some *big data* problems for servers into 
 *small data* problems on your laptop. It is not a database, which you want to
 use for your daily shopping. However, it is a database which
 you can use in special edge cases, in which general solutions perform
@@ -40,8 +40,9 @@ and write it into *dragster* with a constant speed of more than 20.000 rows
 per second (with more than 700 columns, just mind you). So, we are done
 in 3,5 hours, not days or weeks! There is still GC in, so we cannot saturate 
 the local MySQL server here, but it is already *acceptably* fast. 
-Processing is even faster and limited by the USB-C bus speed, which peaks
-out at around 700-800 MB per second. We were able to create an in-memory
+Processing of the resulting *dragster* 60GiB file is even faster and 
+limited by the USB-C bus speed, which peaks out at around 700-800 MB per second. 
+We were able to create an in-memory
 index by visiting each object to read every single timestamp - for 350 million 
 objects in less than 3 minutes!
 
@@ -69,6 +70,6 @@ our prefix-style is so primitive and still wasteful.
 It is not intended to be able to delete any entries. It is also not really possible
 to update entries, though one may at least update any data field, as long as
 the required byte width will not change. Inserting and reading concurrently
-may be possible but will probably performs bad, especially for random access
-in the current implementation, which is optimized for sequential single user/thread 
-processing.
+may be possible but will probably perform badly, especially for random access
+in the current implementation, which is only optimized for 
+sequential single user/thread processing.
