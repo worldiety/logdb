@@ -5,6 +5,7 @@ import (
 	"github.com/worldiety/ioutil"
 	"io"
 	"os"
+	"runtime"
 	"sync"
 )
 
@@ -77,6 +78,10 @@ func Open(fname string) (*DB, error) {
 	return db, nil
 }
 
+func (db *DB) ObjectCount() uint64 {
+	return db.header.ObjectCount()
+}
+
 func (db *DB) NameByIndex(idx int) string {
 	return db.header.NameByIndex(idx)
 }
@@ -85,8 +90,8 @@ func (db *DB) IndexByName(name string) int {
 	return db.header.IndexByName(name)
 }
 
-func (db *DB) PutName(name string) int {
-	return db.header.AddName(name)
+func (db *DB) PutName(name string) uint16 {
+	return uint16(db.header.AddName(name))
 }
 
 func (db *DB) Names() []string {
@@ -208,6 +213,105 @@ func (db *DB) ForEach(f func(id uint64, obj *Object) error) error {
 		}
 
 	}
+
+	return nil
+}
+
+// findRecords parses over the entire file and returns all record offset
+func (db *DB) findRecords() ([]int64, error) {
+	res := make([]int64, 0, db.header.txCount)
+
+	tmp := make([]byte, offsetRecObjCount)
+	buf := ioutil.LittleEndianBuffer{
+		Bytes: tmp,
+		Pos:   0,
+	}
+
+	offset := int64(len(db.header.buf.Bytes))
+	for offset < db.eof {
+		res = append(res, offset)
+		lBuf, err := db.file.ReadAt(tmp, offset)
+		if err != nil {
+			if err != io.EOF {
+				return nil, err
+			}
+		}
+
+		if lBuf < offsetRecObjCount {
+			return nil, fmt.Errorf("unable to read a record bound at offset %d", offset)
+		}
+
+		buf.Pos = offsetRecSize
+		size := buf.ReadUint32()
+
+		offset += int64(size)
+	}
+
+	return res, nil
+}
+
+func (db *DB) ForEachP(f func(id uint64, obj *Object) error) error {
+	records, err := db.findRecords()
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("found %d records\n", len(records))
+
+	recordQueue := make(chan int64, len(records))
+	for _, r := range records {
+		recordQueue <- r
+	}
+
+	wg := sync.WaitGroup{}
+	wg.Add(runtime.NumCPU())
+
+	for i := 0; i < runtime.NumCPU(); i++ {
+		go func() {
+			defer wg.Done()
+
+			record := newRecord(db.pendingWriteRecord.MaxSize())
+			obj := newObject(db.maxObjSize)
+
+			for {
+
+				var offset int64
+				select {
+				case offset = <-recordQueue:
+				default:
+					return
+				}
+
+
+
+
+				lBuf, err := db.file.ReadAt(record.buf.Bytes, offset)
+				if err != nil {
+					if err != io.EOF {
+						panic(err)
+					}
+				}
+
+				if lBuf < offsetRecObjList {
+					panic(fmt.Errorf("unable to read a record at offset %d", offset))
+				}
+
+				record.reverseFlush()
+				err = record.ForEach(obj, func(recOffset int, object *Object) error {
+					return f(uint64(offset)+uint64(recOffset), object)
+				})
+
+				offset += int64(record.Size())
+
+				if err != nil {
+					panic(err)
+				}
+			}
+
+		}()
+	}
+
+	wg.Wait()
 
 	return nil
 }
