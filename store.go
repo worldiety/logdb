@@ -250,7 +250,7 @@ func (db *DB) findRecords() ([]int64, error) {
 	return res, nil
 }
 
-func (db *DB) ForEachP(f func(id uint64, obj *Object) error) error {
+func (db *DB) ForEachP(routines int,f func(id uint64, obj *Object) error) error {
 	records, err := db.findRecords()
 	if err != nil {
 		return err
@@ -264,10 +264,13 @@ func (db *DB) ForEachP(f func(id uint64, obj *Object) error) error {
 	}
 
 	wg := sync.WaitGroup{}
-	wg.Add(runtime.NumCPU())
+	wg.Add(routines)
 
-	for i := 0; i < runtime.NumCPU(); i++ {
+	for i := 0; i <routines; i++ {
 		go func() {
+			runtime.LockOSThread()
+			defer runtime.UnlockOSThread()
+
 			defer wg.Done()
 
 			record := newRecord(db.pendingWriteRecord.MaxSize())

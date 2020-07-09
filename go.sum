@@ -19,3 +19,9 @@ github.com/worldiety/ioutil v0.0.0-20200701154709-6d160e43a609 h1:C32n5Wfy3SgdKQ
 github.com/worldiety/ioutil v0.0.0-20200701154709-6d160e43a609/go.mod h1:BdaPI7SxP9HTK7ixxvzsefmPKzrkRowbpT+1x3iPmmY=
 github.com/worldiety/ioutil v0.0.0-20200703141145-92fab8365fe4 h1:/gRAyXJfW17uL0zlQkQjild0p9s+DecyyM88rUYxvPI=
 github.com/worldiety/ioutil v0.0.0-20200703141145-92fab8365fe4/go.mod h1:BdaPI7SxP9HTK7ixxvzsefmPKzrkRowbpT+1x3iPmmY=
+github.com/worldiety/ioutil v0.0.0-20200709073751-ea518b05c020 h1:euUDJnKbQDNN2UsdpsmUwjh3LHED5tkGvxvMqYk+FVk=
+github.com/worldiety/ioutil v0.0.0-20200709073751-ea518b05c020/go.mod h1:BdaPI7SxP9HTK7ixxvzsefmPKzrkRowbpT+1x3iPmmY=
+github.com/worldiety/ioutil v0.0.0-20200709094242-7c369ff3ca19 h1:XhCyGzp/fO6BA7oi3R2QZDCYp6PfCwrJp1aiHljOzwU=
+github.com/worldiety/ioutil v0.0.0-20200709094242-7c369ff3ca19/go.mod h1:BdaPI7SxP9HTK7ixxvzsefmPKzrkRowbpT+1x3iPmmY=
+github.com/worldiety/ioutil v0.0.0-20200709102146-bd8efcb2d8b4 h1:f/ZzzwOqm8+Ws5KorrXe0sLANYsVSZDgMfNQTZTk8lI=
+github.com/worldiety/ioutil v0.0.0-20200709102146-bd8efcb2d8b4/go.mod h1:BdaPI7SxP9HTK7ixxvzsefmPKzrkRowbpT+1x3iPmmY=

@@ -5,5 +5,5 @@ go 1.14
 require (
 	github.com/golangee/log v0.0.0-20200527135508-039216fb6009 // indirect
 	github.com/pierrec/lz4 v2.5.2+incompatible // indirect
-	github.com/worldiety/ioutil v0.0.0-20200703141145-92fab8365fe4
+	github.com/worldiety/ioutil v0.0.0-20200709102146-bd8efcb2d8b4
 )

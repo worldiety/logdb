@@ -1,8 +1,8 @@
 package main
 
 import (
+	"flag"
 	"fmt"
-	"github.com/worldiety/ioutil"
 	"github.com/worldiety/logdb"
 	"github.com/worldiety/logdb/benchmark"
 	"os"
@@ -17,12 +17,15 @@ func main() {
 	tmpFile := filepath.Join(dir, "sensor.logdb")
 	fmt.Printf("database file is '%s'\n", tmpFile)
 
-	if err := scanTable(tmpFile); err != nil {
+	concurrency := flag.Int("p", 1, "amount of go routines")
+	flag.Parse()
+
+	if err := scanTable(tmpFile, *concurrency); err != nil {
 		panic(err)
 	}
 }
 
-func scanTable(fname string) error {
+func scanTable(fname string, concurrency int) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
@@ -51,10 +54,21 @@ func scanTable(fname string) error {
 
 	point := benchmark.TemperaturePoint{}
 
-	progress := benchmark.NewProgress(db.ObjectCount(),100_000)
+	progress := benchmark.NewProgress(db.ObjectCount(), 100_000)
 
-	err = db.ForEachP(func(id uint64, obj *logdb.Object) error {
-		obj.WithFields(func(name uint16, kind ioutil.Type, f *logdb.FieldReader) {
+	err = db.ForEachP(concurrency, func(id uint64, obj *logdb.Object) error {
+		obj.FieldReaderReset()
+		for obj.FieldReaderNext() {
+			name := obj.FieldReaderName()
+			if name == colSensorId {
+				point.SensorId = obj.FieldReader().ReadUint32()
+			} else if name == colTimestamp {
+				point.Timestamp = obj.FieldReader().ReadUint32()
+			} else if name == colTemperature {
+				point.Temperature = obj.FieldReader().ReadInt8()
+			}
+		}
+		/*obj.WithFields(func(name uint16, kind ioutil.Type, f *logdb.FieldReader) {
 			if name == colSensorId {
 				point.SensorId = f.ReadUint32()
 				return
@@ -69,7 +83,7 @@ func scanTable(fname string) error {
 				point.Temperature = f.ReadInt8()
 				return
 			}
-		})
+		})*/
 
 		if max.Temperature < point.Temperature {
 			max = point
@@ -80,7 +94,7 @@ func scanTable(fname string) error {
 		}
 
 		if point.Temperature == 0 {
-			atomic.AddInt64(&countForZero,1)
+			atomic.AddInt64(&countForZero, 1)
 		}
 
 		progress.Next()

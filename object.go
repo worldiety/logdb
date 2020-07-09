@@ -23,6 +23,11 @@ type Object struct {
 	buf        *ioutil.LittleEndianBuffer
 	size       uint32
 	fieldCount uint16
+
+	fieldReaderNum int16
+	fieldReaderName uint16
+	fieldReaderType ioutil.Type
+	fieldReaderDrainPos int
 }
 
 func newObject(maxSize int) *Object {
@@ -62,6 +67,38 @@ func (d *Object) flush() {
 func (d *Object) Bytes() []byte {
 	return d.buf.Bytes[:d.Size()]
 }
+
+func (d *Object) FieldReaderReset(){
+	d.fieldReaderNum = -1
+	d.buf.Pos = offsetFieldList
+	d.fieldReaderType = 0
+}
+
+func (d *Object) FieldReaderName()uint16{
+	return d.fieldReaderName
+}
+
+func (d *Object) FieldReaderNext()bool{
+	d.fieldReaderNum++
+	if uint16(d.fieldReaderNum) < d.fieldCount{
+
+		d.fieldReaderName = d.buf.ReadUint16()
+		//d.fieldReaderType = d.buf.ReadType()
+		//d.fieldReaderDrainPos = d.buf.Pos
+		//d.buf.Pos--
+
+		return true
+	}
+
+	return false
+}
+
+func(d *Object) FieldReader()*FieldReader{
+	return (*FieldReader)(d.buf)
+}
+
+
+
 
 // WithFields iterates over each available field. This is the fastest
 // thing we can do.
