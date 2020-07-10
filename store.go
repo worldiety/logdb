@@ -39,6 +39,8 @@ func Open(fname string, useMmap bool, compression bool) (*DB, error) {
 		return nil, err
 	}
 
+	fmt.Printf("mmap=%v compression=%v\n", useMmap, compression)
+
 	fmt.Printf("db size is %d (%d MiB)\n", stat.Size(), stat.Size()/1024/1024)
 
 	db := &DB{file: file, eof: stat.Size()}
@@ -269,7 +271,6 @@ func (db *DB) ForEach(f func(id uint64, obj *Object) error) error {
 	return nil
 }
 
-
 // findRecords parses over the entire file and returns all record offset
 func (db *DB) findRecords() ([]int64, error) {
 	res := make([]int64, 0, db.header.txCount)
@@ -290,7 +291,7 @@ func (db *DB) findRecords() ([]int64, error) {
 					return nil, err
 				}
 			}
-			offset+=4
+			offset += 4
 
 			buf.Pos = 0
 			size := buf.ReadUint32()
