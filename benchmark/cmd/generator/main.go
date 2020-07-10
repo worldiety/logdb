@@ -12,18 +12,19 @@ import (
 
 func main() {
 	compress := flag.Bool("lz4", true, "lz4 compression")
+	points2gen := flag.Int("points", 1_000_000_000, "points to generate")
 	flag.Parse()
 
 	dir := os.TempDir()
 	tmpFile := filepath.Join(dir, "sensor.logdb")
 	fmt.Printf("database file is '%s'\n", tmpFile)
 
-	if err := create(tmpFile, *compress); err != nil {
+	if err := create(tmpFile, *compress, *points2gen); err != nil {
 		panic(err)
 	}
 }
 
-func create(fname string, compress bool) error {
+func create(fname string, compress bool, pointsToGenerate int) error {
 	_ = os.Remove(fname)
 	db, err := logdb.Open(fname, false, compress)
 	if err != nil {
@@ -36,13 +37,12 @@ func create(fname string, compress bool) error {
 	colTemperature := db.PutName("Temperature")
 
 	const largestSensorId = 1_000_000
-	const pointsToGenerate = 1_000_000_000
 	timestamp := uint32(1594204360)
 
 	random := rand.New(rand.NewSource(1234))
 	point := benchmark.TemperaturePoint{}
 
-	progress := benchmark.NewProgress(pointsToGenerate, 100_000)
+	progress := benchmark.NewProgress(uint64(pointsToGenerate), 100_000)
 
 	for i := 0; i < pointsToGenerate; i++ {
 		progress.Next()
