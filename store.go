@@ -50,7 +50,7 @@ func Open(fname string, useMmap bool, compression bool) (*DB, error) {
 	db.reader, err = newConcurrentCachedReader(db.file, db.maxRecSize)
 	db.useMmap = useMmap
 	db.compressHashtable = make([]int, 1<<16)
-	db.compress = true
+	db.compress = compression
 
 	if useMmap {
 		data, err := syscall.Mmap(int(file.Fd()), 0, int(stat.Size()), syscall.PROT_READ, syscall.MAP_PRIVATE)
