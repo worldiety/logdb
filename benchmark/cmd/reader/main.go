@@ -56,7 +56,7 @@ func scanTable(fname string, concurrency int, mmap, compression bool) error {
 	progress := benchmark.NewProgress(db.ObjectCount(), 100_000)
 
 	debug.SetGCPercent(-1)
-	debug.SetMaxThreads(32)
+	//debug.SetMaxThreads(32)
 	/*
 		err = db.ForEach( func(id uint64, obj *logdb.Object) error {
 			point := benchmark.TemperaturePoint{}
