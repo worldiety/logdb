@@ -41,6 +41,11 @@ func (p *Progress) Next() {
 	}
 }
 
+func (p *Progress)Done(){
+	atomic.StoreUint64(&p.current,p.max)
+	p.PrintStatistics()
+}
+
 // PrintStatistics just prints some global statistics
 func (p *Progress) PrintStatistics() {
 	elements := atomic.LoadUint64(&p.current)

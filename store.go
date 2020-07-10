@@ -2,11 +2,14 @@ package logdb
 
 import (
 	"fmt"
+	"github.com/dgryski/go-prefetch"
 	"github.com/worldiety/ioutil"
 	"io"
 	"os"
 	"runtime"
 	"sync"
+	"syscall"
+	"unsafe"
 )
 
 type DB struct {
@@ -19,18 +22,26 @@ type DB struct {
 	reader             *concurrentCachedReader
 	objPool            sync.Pool
 	header             *Header
+	mmapFile []byte
+	useMmap bool
 }
 
-func Open(fname string) (*DB, error) {
+func Open(fname string,useMmap bool) (*DB, error) {
 	file, err := os.OpenFile(fname, os.O_RDWR|os.O_CREATE, os.ModePerm)
 	if err != nil {
 		return nil, err
 	}
 
+
+
+
 	stat, err := file.Stat()
 	if err != nil {
 		return nil, err
 	}
+
+
+
 
 	fmt.Printf("db size is %d (%d MiB)\n", stat.Size(), stat.Size()/1024/1024)
 
@@ -41,6 +52,16 @@ func Open(fname string) (*DB, error) {
 	db.pendingWriteRecord = newRecord(db.maxRecSize)
 	db.tmpWriteObj = newObject(db.maxObjSize)
 	db.reader, err = newConcurrentCachedReader(db.file, db.maxRecSize)
+	db.useMmap = useMmap
+
+	if useMmap{
+		data, err := syscall.Mmap(int(file.Fd()), 0, int(stat.Size()), syscall.PROT_READ, syscall.MAP_PRIVATE)
+		if err != nil {
+			return nil,fmt.Errorf("error mmap: %w", err)
+		}
+		db.mmapFile = data
+	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -217,6 +238,72 @@ func (db *DB) ForEach(f func(id uint64, obj *Object) error) error {
 	return nil
 }
 
+// ForEachP2 walks linear over the records to not trash the cpu cache and memory bandwidth that much.
+// Instead we try to parse each obj concurrently instead
+func (db *DB) ForEachP2(p int, f func(id uint64, obj *Object) error) error {
+	record := newRecord(db.pendingWriteRecord.MaxSize())
+
+	tmpOffsets := make([]int, 10_000_000)
+	offset := int64(len(db.header.buf.Bytes))
+	for offset < db.eof {
+		lBuf, err := db.file.ReadAt(record.buf.Bytes, offset)
+		if err != nil {
+			if err != io.EOF {
+				return err
+			}
+		}
+
+		if lBuf < offsetRecObjList {
+			return fmt.Errorf("unable to read a record at offset %d", offset)
+		}
+
+		record.reverseFlush()
+		objCount := record.ObjOffsets(tmpOffsets)
+		offsets := tmpOffsets[:objCount]
+
+		wg := sync.WaitGroup{}
+		wg.Add(p)
+
+		for i := 0; i < p; i++ {
+			perThreadOffsets := make([]int, 0, objCount/p)
+			for x := i; x < objCount; x += p {
+				perThreadOffsets = append(perThreadOffsets, offsets[x])
+			}
+
+			go func(myOffsets []int) {
+				obj := newObject(db.maxObjSize)
+
+				//runtime.LockOSThread()
+				//defer runtime.UnlockOSThread()
+				defer wg.Done()
+				for _, offset := range myOffsets {
+					prefetch.NTA(unsafe.Pointer(uintptr(unsafe.Pointer(&record.buf.Bytes)) + uintptr(offset)))
+					runtime.Gosched()
+
+					err = record.At(offset, obj, func(recOffset int, object *Object) error {
+						return f(uint64(offset)+uint64(recOffset), object)
+					})
+					if err != nil {
+						panic(err)
+					}
+				}
+
+			}(perThreadOffsets)
+		}
+
+		wg.Wait()
+
+		offset += int64(record.Size())
+
+		if err != nil {
+			return err
+		}
+
+	}
+
+	return nil
+}
+
 // findRecords parses over the entire file and returns all record offset
 func (db *DB) findRecords() ([]int64, error) {
 	res := make([]int64, 0, db.header.txCount)
@@ -250,7 +337,11 @@ func (db *DB) findRecords() ([]int64, error) {
 	return res, nil
 }
 
-func (db *DB) ForEachP(routines int,f func(id uint64, obj *Object) error) error {
+// ForEachP walks parallel over records and makes things worse: looks like we are crashing the cpu-memory bandwidth barrier with
+// more than 1 routine already. On big cloud machines this effect is even worse and makes everything
+// slower (e.g. from 20m to 13m for 2 cores, without any locking effects). Instruments shows
+// cache-misses increases on macos linearly.
+func (db *DB) ForEachP(routines int, f func(gid int, id uint64, obj *Object) error) (e error) {
 	records, err := db.findRecords()
 	if err != nil {
 		return err
@@ -258,16 +349,18 @@ func (db *DB) ForEachP(routines int,f func(id uint64, obj *Object) error) error 
 
 	fmt.Printf("found %d records\n", len(records))
 
-	recordQueue := make(chan int64, len(records))
-	for _, r := range records {
-		recordQueue <- r
-	}
-
 	wg := sync.WaitGroup{}
 	wg.Add(routines)
 
-	for i := 0; i <routines; i++ {
-		go func() {
+	batchSize := len(records) / routines // 11/2 = 5
+
+	for i := 0; i < routines; i++ {
+		fromRec, toRec := i*batchSize, (i+1)*batchSize
+		if i == routines-1 {
+			toRec = len(records)
+		}
+
+		go func(id, fromRec, toRec int) {
 			runtime.LockOSThread()
 			defer runtime.UnlockOSThread()
 
@@ -276,45 +369,55 @@ func (db *DB) ForEachP(routines int,f func(id uint64, obj *Object) error) error 
 			record := newRecord(db.pendingWriteRecord.MaxSize())
 			obj := newObject(db.maxObjSize)
 
-			for {
+			for r := fromRec; r < toRec; r++ {
 
-				var offset int64
-				select {
-				case offset = <-recordQueue:
-				default:
-					return
-				}
+				offset := records[r]
+
+				if db.useMmap{
+					max := db.maxRecSize
+					avail := int(db.eof)-int(offset)
+					if max > avail{
+						max = avail
+					}
+					record.buf.Bytes = db.mmapFile[offset:int(offset)+max]
+				}else{
+					lBuf, err := db.file.ReadAt(record.buf.Bytes, offset)
+					if err != nil {
+						if err != io.EOF {
+							panic(err)
+						}
+					}
 
 
 
-
-				lBuf, err := db.file.ReadAt(record.buf.Bytes, offset)
-				if err != nil {
-					if err != io.EOF {
-						panic(err)
+					if lBuf < offsetRecObjList {
+						panic(fmt.Errorf("unable to read a record at offset %d", offset))
 					}
 				}
 
-				if lBuf < offsetRecObjList {
-					panic(fmt.Errorf("unable to read a record at offset %d", offset))
-				}
+
+
+
 
 				record.reverseFlush()
 				err = record.ForEach(obj, func(recOffset int, object *Object) error {
-					return f(uint64(offset)+uint64(recOffset), object)
+					return f(id, uint64(offset)+uint64(recOffset), object)
 				})
 
 				offset += int64(record.Size())
 
 				if err != nil {
-					panic(err)
+					if e != nil{
+						e = err
+					}
+					return
 				}
 			}
 
-		}()
+		}(i, fromRec, toRec)
 	}
 
 	wg.Wait()
 
-	return nil
+	return
 }

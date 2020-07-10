@@ -38,6 +38,39 @@ func newObject(maxSize int) *Object {
 	return o
 }
 
+func (d *Object)DeepClone()*Object{
+	tmp := make([]byte,len(d.buf.Bytes))
+	copy(tmp,d.buf.Bytes)
+
+	return &Object{
+		buf:                 &ioutil.LittleEndianBuffer{
+			Bytes: tmp,
+			Pos:   0,
+		},
+		size:                d.size,
+		fieldCount:          d.fieldCount,
+		fieldReaderNum:      d.fieldReaderNum,
+		fieldReaderName:     d.fieldReaderName,
+		fieldReaderType:     d.fieldReaderType,
+		fieldReaderDrainPos: d.fieldReaderDrainPos,
+	}
+}
+
+func (d *Object)Clone()*Object{
+	return &Object{
+		buf:                 &ioutil.LittleEndianBuffer{
+			Bytes: d.buf.Bytes,
+			Pos:   0,
+		},
+		size:                d.size,
+		fieldCount:          d.fieldCount,
+		fieldReaderNum:      d.fieldReaderNum,
+		fieldReaderName:     d.fieldReaderName,
+		fieldReaderType:     d.fieldReaderType,
+		fieldReaderDrainPos: d.fieldReaderDrainPos,
+	}
+}
+
 func (d *Object) Size() uint32 {
 	return d.size
 }

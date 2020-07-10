@@ -1,3 +1,5 @@
+github.com/dgryski/go-prefetch v0.0.0-20180312175948-271b16d73b2e h1:77nk5ZgIW+F+d9GcAMy6+5fHFbl3Si11a8NWbJP02to=
+github.com/dgryski/go-prefetch v0.0.0-20180312175948-271b16d73b2e/go.mod h1:yJ7sWbox6AFPLL8tMoaj4xtzLsC7cIlMVJtnVyxckRw=
 github.com/golangee/log v0.0.0-20200527135508-039216fb6009 h1:Oq7S5qEtW2onDpKpYOcn4l/6pwKgg+GlpLSqfM79RxQ=
 github.com/golangee/log v0.0.0-20200527135508-039216fb6009/go.mod h1:3bn9K3Qv+nn37RGViudYamNme1p/xf5olDp5Qehf6w8=
 github.com/pierrec/lz4 v1.0.1 h1:w6GMGWSsCI04fTM8wQRdnW74MuJISakuUU0onU0TYB4=
@@ -25,3 +27,7 @@ github.com/worldiety/ioutil v0.0.0-20200709094242-7c369ff3ca19 h1:XhCyGzp/fO6BA7
 github.com/worldiety/ioutil v0.0.0-20200709094242-7c369ff3ca19/go.mod h1:BdaPI7SxP9HTK7ixxvzsefmPKzrkRowbpT+1x3iPmmY=
 github.com/worldiety/ioutil v0.0.0-20200709102146-bd8efcb2d8b4 h1:f/ZzzwOqm8+Ws5KorrXe0sLANYsVSZDgMfNQTZTk8lI=
 github.com/worldiety/ioutil v0.0.0-20200709102146-bd8efcb2d8b4/go.mod h1:BdaPI7SxP9HTK7ixxvzsefmPKzrkRowbpT+1x3iPmmY=
+github.com/worldiety/ioutil v0.0.0-20200709164019-ccfcc646538a h1:n1wQtqJQRW3U9P78cCCvWSihGcQ4g2772OLYPDIZH2I=
+github.com/worldiety/ioutil v0.0.0-20200709164019-ccfcc646538a/go.mod h1:BdaPI7SxP9HTK7ixxvzsefmPKzrkRowbpT+1x3iPmmY=
+github.com/worldiety/ioutil v0.0.0-20200710112403-a64eef5df4a2 h1:PXtd/umy/QXKusBJVVZTLCpJtAip4rg1Q4ffWMCKGIU=
+github.com/worldiety/ioutil v0.0.0-20200710112403-a64eef5df4a2/go.mod h1:BdaPI7SxP9HTK7ixxvzsefmPKzrkRowbpT+1x3iPmmY=

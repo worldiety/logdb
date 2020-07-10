@@ -1,6 +1,8 @@
 package logdb
 
-import "github.com/worldiety/ioutil"
+import (
+	"github.com/worldiety/ioutil"
+)
 
 const (
 	offsetRecMagic    = 0
@@ -65,28 +67,67 @@ func (d *Record) Add(obj *Object) {
 	d.setObjectCount(count + 1)
 }
 
-func (d *Record) ForEach(tmp *Object, f func(offset int, object *Object) error) error {
-	// we don't want another memcpy, so we slice into
-	tmpBuf := tmp.buf.Bytes
-	defer func() {
-		tmp.buf.Bytes = tmpBuf
-	}()
+func (d *Record) At(offset int, tmp *Object, f func(offset int, object *Object) error) error {
+	size := d.ReadUint24At(offset)
+	objBuf := d.buf.Bytes[offset : offset+int(size)]
+	tmp.buf.Bytes = objBuf
+	tmp.reverseFlush()
 
+	if err := f(offset, tmp); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (d *Record) ReadUint24At(pos int) uint32 {
+	b := d.buf.Bytes
+
+	_ = b[pos+2] // bounds check hint to compiler; see golang.org/issue/14808
+	return uint32(b[pos]) | uint32(b[pos+1])<<8 | uint32(b[pos+2])<<16
+}
+
+func (d *Record) ObjOffsets(dst []int) int {
 	count := int(d.ObjectCount())
 	d.buf.Pos = offsetRecObjList
 	for i := 0; i < count; i++ {
-		_ = offsetSize // for documentation only
+		dst[i] = d.buf.Pos
+		size := int(d.buf.ReadUint24())
+		d.buf.Pos += size-3
+	}
+
+	return count
+}
+
+func (d *Record) ForEach(tmp *Object, f func(offset int, object *Object) error) error {
+	// we don't want another memcpy, so we slice into
+	/*tmpBuf := tmp.buf.Bytes
+	defer func() {
+		tmp.buf.Bytes = tmpBuf
+	}()*/
+
+	count := int(d.ObjectCount())
+	d.buf.Pos = offsetRecObjList
+	_ = offsetSize // for documentation only
+	for i := 0; i < count; i++ {
+
+
+
 		size := d.buf.ReadUint24()
 		d.buf.Pos -= 3
+
+
 
 		// just slice it
 		objBuf := d.buf.Bytes[d.buf.Pos : d.buf.Pos+int(size)]
 		tmp.buf.Bytes = objBuf
 
 		tmp.reverseFlush()
+
 		if err := f(d.buf.Pos, tmp); err != nil {
 			return err
 		}
+
 		d.buf.Pos += int(size)
 	}
 

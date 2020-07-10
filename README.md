@@ -73,3 +73,16 @@ the required byte width will not change. Inserting and reading concurrently
 may be possible but will probably perform badly, especially for random access
 in the current implementation, which is only optimized for 
 sequential single user/thread processing.
+
+
+## benchmark data at hetzner
+generator:
+100%
+processed 1000000000 elements in 1m47.698934968s
+processing duration per element was 107ns
+processed 9285142.89 elements per second (9 million elements per second)
+
+reader -p=1:
+processed 1000000000 elements in 47.098594809s
+processing duration per element was 47ns
+processed 21232055.95 elements per second (21 million elements per second)

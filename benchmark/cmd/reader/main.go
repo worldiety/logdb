@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
-	"sync/atomic"
 )
 
 func main() {
@@ -18,21 +17,22 @@ func main() {
 	fmt.Printf("database file is '%s'\n", tmpFile)
 
 	concurrency := flag.Int("p", 1, "amount of go routines")
+	usemmap := flag.Bool("mmap", false, "mmap the entire file instead of pread")
 	flag.Parse()
 
-	if err := scanTable(tmpFile, *concurrency); err != nil {
+	if err := scanTable(tmpFile, *concurrency, *usemmap); err != nil {
 		panic(err)
 	}
 }
 
-func scanTable(fname string, concurrency int) error {
+func scanTable(fname string, concurrency int, mmap bool) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
 	debug.SetGCPercent(-1)
 	defer debug.SetGCPercent(100)
 
-	db, err := logdb.Open(fname)
+	db, err := logdb.Open(fname, mmap)
 	if err != nil {
 		return err
 	}
@@ -52,60 +52,95 @@ func scanTable(fname string, concurrency int) error {
 
 	countForZero := int64(0)
 
-	point := benchmark.TemperaturePoint{}
-
 	progress := benchmark.NewProgress(db.ObjectCount(), 100_000)
 
-	err = db.ForEachP(concurrency, func(id uint64, obj *logdb.Object) error {
+	debug.SetGCPercent(-1)
+	debug.SetMaxThreads(32)
+	/*
+		err = db.ForEach( func(id uint64, obj *logdb.Object) error {
+			point := benchmark.TemperaturePoint{}
+			obj.FieldReaderReset()
+			for obj.FieldReaderNext() {
+				name := obj.FieldReaderName()
+				if name == colSensorId {
+					point.SensorId = obj.FieldReader().ReadUint32()
+				} else if name == colTimestamp {
+					point.Timestamp = obj.FieldReader().ReadUint32()
+				} else if name == colTemperature {
+					point.Temperature = obj.FieldReader().ReadInt8()
+				}
+			}
+
+
+			if max.Temperature < point.Temperature {
+				max = point
+			}
+
+			if min.Temperature > point.Temperature {
+				min = point
+			}
+
+			if point.Temperature == 0 {
+				//atomic.AddInt64(&countForZero, 1)
+				countForZero++
+			}
+			return nil
+		}) */ //23m
+
+	type perThreadRes struct {
+		zeroCount       int64
+		point, min, max benchmark.TemperaturePoint
+		pad             [20]byte // fill entire 64byte cache line per thread? seems to have no influence, doesn't work like this?
+	}
+
+	const cur = 8 //2 threads scales good, beyond not
+
+	threadLocals := make([]*perThreadRes, cur)
+	for i := range threadLocals {
+		threadLocals[i] = new(perThreadRes) // this 25% faster (30m/40m than value type for 2 threads, probably to close in cache line?)
+	}
+
+	err = db.ForEachP(cur, func(gid int, id uint64, obj *logdb.Object) error {
+		threadLocal := threadLocals[gid]
+
 		obj.FieldReaderReset()
 		for obj.FieldReaderNext() {
 			name := obj.FieldReaderName()
 			if name == colSensorId {
-				point.SensorId = obj.FieldReader().ReadUint32()
+				threadLocal.point.SensorId = obj.FieldReader().ReadUint32()
 			} else if name == colTimestamp {
-				point.Timestamp = obj.FieldReader().ReadUint32()
+				threadLocal.point.Timestamp = obj.FieldReader().ReadUint32()
 			} else if name == colTemperature {
-				point.Temperature = obj.FieldReader().ReadInt8()
+				threadLocal.point.Temperature = obj.FieldReader().ReadInt8()
 			}
 		}
-		/*obj.WithFields(func(name uint16, kind ioutil.Type, f *logdb.FieldReader) {
-			if name == colSensorId {
-				point.SensorId = f.ReadUint32()
-				return
-			}
 
-			if name == colTimestamp {
-				point.Timestamp = f.ReadUint32()
-				return
-			}
-
-			if name == colTemperature {
-				point.Temperature = f.ReadInt8()
-				return
-			}
-		})*/
-
-		if max.Temperature < point.Temperature {
-			max = point
+		if threadLocal.max.Temperature < threadLocal.point.Temperature {
+			threadLocal.max = threadLocal.point
 		}
 
-		if min.Temperature > point.Temperature {
-			min = point
+		if threadLocal.min.Temperature > threadLocal.point.Temperature {
+			threadLocal.min = threadLocal.point
 		}
 
-		if point.Temperature == 0 {
-			atomic.AddInt64(&countForZero, 1)
+		if threadLocal.point.Temperature == 0 {
+			//atomic.AddInt64(&countForZero, 1)
+			threadLocals[gid].zeroCount++
 		}
-
-		progress.Next()
 		return nil
 	})
+
+	progress.Done()
 
 	if err != nil {
 		return fmt.Errorf("failed to forEach: %w", err)
 	}
 
-	progress.PrintStatistics()
+	for _, threadLocal := range threadLocals {
+		countForZero += threadLocal.zeroCount
+	}
+
+	//progress.PrintStatistics()
 
 	fmt.Printf("the min value is %+v\n", min)
 	fmt.Printf("the max value is %+v\n", max)
