@@ -18,21 +18,22 @@ func main() {
 
 	concurrency := flag.Int("p", 1, "amount of go routines")
 	usemmap := flag.Bool("mmap", false, "mmap the entire file instead of pread")
+	comp := flag.Bool("lz4", true, "lz4 compression on")
 	flag.Parse()
 
-	if err := scanTable(tmpFile, *concurrency, *usemmap); err != nil {
+	if err := scanTable(tmpFile, *concurrency, *usemmap, *comp); err != nil {
 		panic(err)
 	}
 }
 
-func scanTable(fname string, concurrency int, mmap bool) error {
+func scanTable(fname string, concurrency int, mmap, compression bool) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
 	debug.SetGCPercent(-1)
 	defer debug.SetGCPercent(100)
 
-	db, err := logdb.Open(fname, mmap)
+	db, err := logdb.Open(fname, mmap, compression)
 	if err != nil {
 		return err
 	}
@@ -93,14 +94,12 @@ func scanTable(fname string, concurrency int, mmap bool) error {
 		pad             [20]byte // fill entire 64byte cache line per thread? seems to have no influence, doesn't work like this?
 	}
 
-	const cur = 8 //2 threads scales good, beyond not
-
-	threadLocals := make([]*perThreadRes, cur)
+	threadLocals := make([]*perThreadRes, concurrency)
 	for i := range threadLocals {
 		threadLocals[i] = new(perThreadRes) // this 25% faster (30m/40m than value type for 2 threads, probably to close in cache line?)
 	}
 
-	err = db.ForEachP(cur, func(gid int, id uint64, obj *logdb.Object) error {
+	err = db.ForEachP(concurrency, func(gid int, id uint64, obj *logdb.Object) error {
 		threadLocal := threadLocals[gid]
 
 		obj.FieldReaderReset()

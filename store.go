@@ -2,14 +2,13 @@ package logdb
 
 import (
 	"fmt"
-	"github.com/dgryski/go-prefetch"
+	"github.com/pierrec/lz4"
 	"github.com/worldiety/ioutil"
 	"io"
 	"os"
 	"runtime"
 	"sync"
 	"syscall"
-	"unsafe"
 )
 
 type DB struct {
@@ -21,27 +20,24 @@ type DB struct {
 	maxRecSize         int
 	reader             *concurrentCachedReader
 	objPool            sync.Pool
+	recPool            sync.Pool
 	header             *Header
-	mmapFile []byte
-	useMmap bool
+	mmapFile           []byte
+	useMmap            bool
+	compress           bool
+	compressHashtable  []int
 }
 
-func Open(fname string,useMmap bool) (*DB, error) {
+func Open(fname string, useMmap bool, compression bool) (*DB, error) {
 	file, err := os.OpenFile(fname, os.O_RDWR|os.O_CREATE, os.ModePerm)
 	if err != nil {
 		return nil, err
 	}
 
-
-
-
 	stat, err := file.Stat()
 	if err != nil {
 		return nil, err
 	}
-
-
-
 
 	fmt.Printf("db size is %d (%d MiB)\n", stat.Size(), stat.Size()/1024/1024)
 
@@ -53,11 +49,13 @@ func Open(fname string,useMmap bool) (*DB, error) {
 	db.tmpWriteObj = newObject(db.maxObjSize)
 	db.reader, err = newConcurrentCachedReader(db.file, db.maxRecSize)
 	db.useMmap = useMmap
+	db.compressHashtable = make([]int, 1<<16)
+	db.compress = true
 
-	if useMmap{
+	if useMmap {
 		data, err := syscall.Mmap(int(file.Fd()), 0, int(stat.Size()), syscall.PROT_READ, syscall.MAP_PRIVATE)
 		if err != nil {
-			return nil,fmt.Errorf("error mmap: %w", err)
+			return nil, fmt.Errorf("error mmap: %w", err)
 		}
 		db.mmapFile = data
 	}
@@ -67,6 +65,10 @@ func Open(fname string,useMmap bool) (*DB, error) {
 	}
 	db.objPool = sync.Pool{
 		New: func() interface{} { return newObject(db.maxObjSize) },
+	}
+
+	db.recPool = sync.Pool{
+		New: func() interface{} { return newRecord(db.maxRecSize) },
 	}
 
 	if db.eof == 0 {
@@ -149,17 +151,46 @@ func (db *DB) Flush() error {
 		return nil
 	}
 
-	n, err := db.file.WriteAt(tmp, db.eof)
-	if err != nil {
-		return err
-	}
+	if db.compress {
+		compressedRec := db.recPool.Get().(*Record)
+		defer db.recPool.Put(compressedRec)
 
-	if n != len(tmp) {
-		return fmt.Errorf("file did not accept full buffer")
-	}
+		n, err := lz4.CompressBlock(tmp, compressedRec.buf.Bytes, db.compressHashtable)
+		if err != nil {
+			return fmt.Errorf("failed to compress: %w", err)
+		}
 
-	db.eof += int64(len(tmp))
-	record.Reset()
+		length := ioutil.LittleEndianBuffer{
+			Bytes: make([]byte, 4),
+			Pos:   0,
+		}
+		length.WriteUint32(uint32(n))
+		db.file.WriteAt(length.Bytes, db.eof)
+		db.eof += 4
+
+		ctmp := compressedRec.buf.Bytes[:n]
+		n, err = db.file.WriteAt(ctmp, db.eof)
+
+		if n != len(ctmp) {
+			return fmt.Errorf("file did not accept full cbuffer")
+		}
+
+		db.eof += int64(len(ctmp))
+		record.Reset()
+
+	} else {
+		n, err := db.file.WriteAt(tmp, db.eof)
+		if err != nil {
+			return err
+		}
+
+		if n != len(tmp) {
+			return fmt.Errorf("file did not accept full buffer")
+		}
+
+		db.eof += int64(len(tmp))
+		record.Reset()
+	}
 
 	db.header.AddTxCount(1)
 	return nil
@@ -238,103 +269,66 @@ func (db *DB) ForEach(f func(id uint64, obj *Object) error) error {
 	return nil
 }
 
-// ForEachP2 walks linear over the records to not trash the cpu cache and memory bandwidth that much.
-// Instead we try to parse each obj concurrently instead
-func (db *DB) ForEachP2(p int, f func(id uint64, obj *Object) error) error {
-	record := newRecord(db.pendingWriteRecord.MaxSize())
-
-	tmpOffsets := make([]int, 10_000_000)
-	offset := int64(len(db.header.buf.Bytes))
-	for offset < db.eof {
-		lBuf, err := db.file.ReadAt(record.buf.Bytes, offset)
-		if err != nil {
-			if err != io.EOF {
-				return err
-			}
-		}
-
-		if lBuf < offsetRecObjList {
-			return fmt.Errorf("unable to read a record at offset %d", offset)
-		}
-
-		record.reverseFlush()
-		objCount := record.ObjOffsets(tmpOffsets)
-		offsets := tmpOffsets[:objCount]
-
-		wg := sync.WaitGroup{}
-		wg.Add(p)
-
-		for i := 0; i < p; i++ {
-			perThreadOffsets := make([]int, 0, objCount/p)
-			for x := i; x < objCount; x += p {
-				perThreadOffsets = append(perThreadOffsets, offsets[x])
-			}
-
-			go func(myOffsets []int) {
-				obj := newObject(db.maxObjSize)
-
-				//runtime.LockOSThread()
-				//defer runtime.UnlockOSThread()
-				defer wg.Done()
-				for _, offset := range myOffsets {
-					prefetch.NTA(unsafe.Pointer(uintptr(unsafe.Pointer(&record.buf.Bytes)) + uintptr(offset)))
-					runtime.Gosched()
-
-					err = record.At(offset, obj, func(recOffset int, object *Object) error {
-						return f(uint64(offset)+uint64(recOffset), object)
-					})
-					if err != nil {
-						panic(err)
-					}
-				}
-
-			}(perThreadOffsets)
-		}
-
-		wg.Wait()
-
-		offset += int64(record.Size())
-
-		if err != nil {
-			return err
-		}
-
-	}
-
-	return nil
-}
 
 // findRecords parses over the entire file and returns all record offset
 func (db *DB) findRecords() ([]int64, error) {
 	res := make([]int64, 0, db.header.txCount)
 
-	tmp := make([]byte, offsetRecObjCount)
-	buf := ioutil.LittleEndianBuffer{
-		Bytes: tmp,
-		Pos:   0,
-	}
+	if db.compress {
+		tmp := make([]byte, 4)
+		buf := ioutil.LittleEndianBuffer{
+			Bytes: tmp,
+			Pos:   0,
+		}
 
-	offset := int64(len(db.header.buf.Bytes))
-	for offset < db.eof {
-		res = append(res, offset)
-		lBuf, err := db.file.ReadAt(tmp, offset)
-		if err != nil {
-			if err != io.EOF {
-				return nil, err
+		offset := int64(len(db.header.buf.Bytes))
+		for offset < db.eof {
+			res = append(res, offset)
+			_, err := db.file.ReadAt(tmp, offset)
+			if err != nil {
+				if err != io.EOF {
+					return nil, err
+				}
 			}
+			offset+=4
+
+			buf.Pos = 0
+			size := buf.ReadUint32()
+
+			offset += int64(size)
+		}
+		return res, nil
+
+	} else {
+
+		tmp := make([]byte, offsetRecObjCount)
+		buf := ioutil.LittleEndianBuffer{
+			Bytes: tmp,
+			Pos:   0,
 		}
 
-		if lBuf < offsetRecObjCount {
-			return nil, fmt.Errorf("unable to read a record bound at offset %d", offset)
+		offset := int64(len(db.header.buf.Bytes))
+		for offset < db.eof {
+			res = append(res, offset)
+			lBuf, err := db.file.ReadAt(tmp, offset)
+			if err != nil {
+				if err != io.EOF {
+					return nil, err
+				}
+			}
+
+			if lBuf < offsetRecObjCount {
+				return nil, fmt.Errorf("unable to read a record bound at offset %d", offset)
+			}
+
+			buf.Pos = offsetRecSize
+			size := buf.ReadUint32()
+
+			offset += int64(size)
 		}
 
-		buf.Pos = offsetRecSize
-		size := buf.ReadUint32()
-
-		offset += int64(size)
+		return res, nil
 	}
-
-	return res, nil
 }
 
 // ForEachP walks parallel over records and makes things worse: looks like we are crashing the cpu-memory bandwidth barrier with
@@ -367,37 +361,57 @@ func (db *DB) ForEachP(routines int, f func(gid int, id uint64, obj *Object) err
 			defer wg.Done()
 
 			record := newRecord(db.pendingWriteRecord.MaxSize())
+			compressedRec := newRecord(db.pendingWriteRecord.MaxSize())
+
 			obj := newObject(db.maxObjSize)
 
 			for r := fromRec; r < toRec; r++ {
 
 				offset := records[r]
 
-				if db.useMmap{
+				if db.useMmap {
 					max := db.maxRecSize
-					avail := int(db.eof)-int(offset)
-					if max > avail{
+					avail := int(db.eof) - int(offset)
+					if max > avail {
 						max = avail
 					}
-					record.buf.Bytes = db.mmapFile[offset:int(offset)+max]
-				}else{
-					lBuf, err := db.file.ReadAt(record.buf.Bytes, offset)
-					if err != nil {
-						if err != io.EOF {
+					record.buf.Bytes = db.mmapFile[offset : int(offset)+max]
+					if db.compress {
+						panic("not yet implemented")
+					}
+				} else {
+					if db.compress {
+						db.file.ReadAt(compressedRec.buf.Bytes, offset)
+						offset += 4
+						clen := compressedRec.buf.ReadUint32()
+						compressedRec.buf.Pos = 0
+
+						buf := compressedRec.buf.Bytes[:clen]
+						_, err := db.file.ReadAt(buf, offset)
+						n, err := lz4.UncompressBlock(buf, record.buf.Bytes)
+						if err != nil {
 							panic(err)
+						}
+
+						if n < offsetRecObjList {
+							panic(fmt.Errorf("unable to read a record at offset %d", offset))
+						}
+
+					} else {
+
+						lBuf, err := db.file.ReadAt(record.buf.Bytes, offset)
+						if err != nil {
+							if err != io.EOF {
+								panic(err)
+							}
+						}
+
+						if lBuf < offsetRecObjList {
+							panic(fmt.Errorf("unable to read a record at offset %d", offset))
 						}
 					}
 
-
-
-					if lBuf < offsetRecObjList {
-						panic(fmt.Errorf("unable to read a record at offset %d", offset))
-					}
 				}
-
-
-
-
 
 				record.reverseFlush()
 				err = record.ForEach(obj, func(recOffset int, object *Object) error {
@@ -407,7 +421,7 @@ func (db *DB) ForEachP(routines int, f func(gid int, id uint64, obj *Object) err
 				offset += int64(record.Size())
 
 				if err != nil {
-					if e != nil{
+					if e != nil {
 						e = err
 					}
 					return

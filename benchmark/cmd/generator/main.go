@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"github.com/worldiety/logdb"
 	"github.com/worldiety/logdb/benchmark"
@@ -10,18 +11,21 @@ import (
 )
 
 func main() {
+	compress := flag.Bool("lz4", true, "lz4 compression")
+	flag.Parse()
+
 	dir := os.TempDir()
 	tmpFile := filepath.Join(dir, "sensor.logdb")
 	fmt.Printf("database file is '%s'\n", tmpFile)
 
-	if err := create(tmpFile); err != nil {
+	if err := create(tmpFile, *compress); err != nil {
 		panic(err)
 	}
 }
 
-func create(fname string) error {
+func create(fname string, compress bool) error {
 	_ = os.Remove(fname)
-	db, err := logdb.Open(fname,false)
+	db, err := logdb.Open(fname, false, compress)
 	if err != nil {
 		return err
 	}
@@ -38,7 +42,7 @@ func create(fname string) error {
 	random := rand.New(rand.NewSource(1234))
 	point := benchmark.TemperaturePoint{}
 
-	progress := benchmark.NewProgress(pointsToGenerate,100_000)
+	progress := benchmark.NewProgress(pointsToGenerate, 100_000)
 
 	for i := 0; i < pointsToGenerate; i++ {
 		progress.Next()
