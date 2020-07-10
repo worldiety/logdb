@@ -21,7 +21,7 @@ func main() {
 
 func create(fname string) error {
 	_ = os.Remove(fname)
-	db, err := logdb.Open(fname)
+	db, err := logdb.Open(fname,false)
 	if err != nil {
 		return err
 	}
