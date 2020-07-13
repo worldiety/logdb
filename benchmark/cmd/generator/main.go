@@ -11,7 +11,7 @@ import (
 )
 
 func main() {
-	compress := flag.Bool("lz4", true, "lz4 compression")
+	compress := flag.Bool("lz4", false, "lz4 compression")
 	points2gen := flag.Int("points", 1_000_000_000, "points to generate")
 	flag.Parse()
 
