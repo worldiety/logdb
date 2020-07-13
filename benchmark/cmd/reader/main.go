@@ -56,7 +56,7 @@ func main() {
 }
 
 func doBenchmark(tmpFile string, maxRoutines int, useMMap, useComp bool) error {
-	const MAX_BEST_OF = 1
+	const MAX_BEST_OF = 3
 
 	fmt.Println("performing benchmark, please wait...")
 	md := &strings.Builder{}
